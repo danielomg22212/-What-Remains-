@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>后来如何</title>
+  <meta name="description" content="《后来如何》在线阅读">
+  <meta name="robots" content="index,follow,noarchive">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>后来如何</h1>
+      <p>潇思雨</p>
+    </div>
+    <div class="tools" aria-label="阅读设置">
+      <button id="decreaseFont" type="button" title="减小字号">A-</button>
+      <button id="increaseFont" type="button" title="增大字号">A+</button>
+      <button id="toggleMode" type="button" title="切换连续/翻页">翻页</button>
+      <button id="toggleTheme" type="button" title="切换明暗">明/暗</button>
+    </div>
+  </header>
+
+  <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+
+  <main class="layout">
+    <nav class="toc" aria-label="章节目录">
+      <h2>目录</h2>
+      <div id="tocList">载入中...</div>
+    </nav>
+    <section class="reading-column">
+      <article id="reader" class="reader" aria-live="polite">
+        <p class="loading">正在载入正文...</p>
+      </article>
+      <div id="pager" class="pager" hidden>
+        <button id="prevPage" type="button">上一页</button>
+        <span id="pageInfo">1 / 1</span>
+        <button id="nextPage" type="button">下一页</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const reader = document.getElementById('reader');
+    const tocList = document.getElementById('tocList');
+    const progressBar = document.getElementById('progressBar');
+    const pager = document.getElementById('pager');
+    const pageInfo = document.getElementById('pageInfo');
+    const toggleModeButton = document.getElementById('toggleMode');
+    const root = document.documentElement;
+    let novelText = '';
+    let pages = [];
+    let readingMode = localStorage.getItem('readingMode') || 'scroll';
+    let currentPage = Number(localStorage.getItem('currentPage') || 0);
+
+    function slugify(text, index) {
+      return `chapter-${index}-${text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+    }
+
+    function plainHeading(line) {
+      return line.replace(/^#{1,6}\s*/, '').trim();
+    }
+
+    function addTocLink(toc, element, text, className) {
+      const link = document.createElement('a');
+      link.href = `#${element.id}`;
+      link.textContent = text;
+      if (className) link.className = className;
+      link.dataset.pageIndex = String(pages.length - 1);
+      link.addEventListener('click', (event) => {
+        if (readingMode === 'page') {
+          event.preventDefault();
+          showPage(Number(link.dataset.pageIndex || 0));
+        }
+      });
+      toc.appendChild(link);
+    }
+
+    function renderInlineMarkdown(text) {
+      const fragment = document.createDocumentFragment();
+      const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean);
+      parts.forEach((part) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          const strong = document.createElement('strong');
+          strong.textContent = part.slice(2, -2);
+          fragment.appendChild(strong);
+        } else if (part.startsWith('`') && part.endsWith('`')) {
+          const code = document.createElement('code');
+          code.textContent = part.slice(1, -1);
+          fragment.appendChild(code);
+        } else {
+          fragment.appendChild(document.createTextNode(part));
+        }
+      });
+      return fragment;
+    }
+
+    function pushNode(node) {
+      if (!pages.length) {
+        pages.push({ title: '封面', id: 'cover', nodes: [] });
+      }
+      pages[pages.length - 1].nodes.push(node);
+    }
+
+    function startPage(title, id) {
+      pages.push({ title, id, nodes: [] });
+    }
+
+    function renderText(text) {
+      const lines = text.replace(/\r\n/g, '\n').split('\n');
+      const toc = document.createDocumentFragment();
+      let chapterIndex = 0;
+      pages = [];
+
+      lines.forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return;
+        }
+
+        const heading = /^(#{1,6})\s+(.+)$/.exec(trimmed);
+        if (heading) {
+          const level = heading[1].length;
+          const titleText = plainHeading(trimmed);
+
+          if (level === 1) {
+            const title = document.createElement('div');
+            title.className = 'book-title';
+            title.textContent = titleText;
+            pushNode(title);
+            return;
+          }
+
+          if (level === 2 && titleText.startsWith('作者：')) {
+            const byline = document.createElement('div');
+            byline.className = 'byline';
+            byline.textContent = titleText;
+            pushNode(byline);
+            return;
+          }
+
+          const tag = level <= 2 ? 'h2' : 'h3';
+          const el = document.createElement(tag);
+          el.textContent = titleText;
+          el.id = slugify(titleText, chapterIndex++);
+          startPage(titleText, el.id);
+          pushNode(el);
+
+          const isChapter = /^第.+章/.test(titleText);
+          const isMajor = titleText === '序' || titleText.startsWith('上：') || titleText.startsWith('下：') || titleText === '创作谈' || titleText === '创作声明';
+          if (isChapter || isMajor) {
+            addTocLink(toc, el, titleText, isChapter ? 'chapter-link' : 'section-link');
+          }
+          return;
+        }
+
+        if (trimmed === '序' || trimmed.startsWith('上：') || trimmed.startsWith('下：')) {
+          const h2 = document.createElement('h2');
+          h2.textContent = trimmed;
+          h2.id = slugify(trimmed, chapterIndex++);
+          startPage(trimmed, h2.id);
+          pushNode(h2);
+          addTocLink(toc, h2, trimmed, 'section-link');
+          return;
+        }
+
+        if (/^第.+章\s/.test(trimmed)) {
+          const h3 = document.createElement('h3');
+          h3.textContent = trimmed;
+          h3.id = slugify(trimmed, chapterIndex++);
+          startPage(trimmed, h3.id);
+          pushNode(h3);
+          addTocLink(toc, h3, trimmed, 'chapter-link');
+          return;
+        }
+
+        if (trimmed.startsWith('《') && trimmed.endsWith('》')) {
+          const title = document.createElement('div');
+          title.className = 'book-title';
+          title.textContent = trimmed;
+          pushNode(title);
+          return;
+        }
+
+        if (trimmed.startsWith('作者：')) {
+          const byline = document.createElement('div');
+          byline.className = 'byline';
+          byline.textContent = trimmed;
+          pushNode(byline);
+          return;
+        }
+
+        const p = document.createElement('p');
+        p.appendChild(renderInlineMarkdown(trimmed));
+        pushNode(p);
+      });
+
+      if (!pages.length) pages.push({ title: '正文', id: 'page-0', nodes: [] });
+      tocList.replaceChildren(toc);
+      applyMode(readingMode);
+    }
+
+    async function loadNovel() {
+      try {
+        const response = await fetch('novel.txt', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        novelText = await response.text();
+        renderText(novelText);
+      } catch (error) {
+        reader.innerHTML = '<p class="loading">正文载入失败。请确认 novel.txt 已上传到同一目录。</p>';
+        tocList.textContent = '目录载入失败';
+      }
+    }
+
+    function cloneNodes(nodes) {
+      return nodes.map((node) => node.cloneNode(true));
+    }
+
+    function renderContinuous() {
+      const fragment = document.createDocumentFragment();
+      pages.forEach((page) => {
+        cloneNodes(page.nodes).forEach((node) => fragment.appendChild(node));
+      });
+      reader.replaceChildren(fragment);
+      pager.hidden = true;
+      toggleModeButton.textContent = '翻页';
+      updateProgress();
+    }
+
+    function showPage(index) {
+      if (!pages.length) return;
+      currentPage = Math.max(0, Math.min(index, pages.length - 1));
+      localStorage.setItem('currentPage', currentPage);
+      const page = pages[currentPage];
+      reader.replaceChildren(...cloneNodes(page.nodes));
+      pageInfo.textContent = `${currentPage + 1} / ${pages.length}`;
+      document.getElementById('prevPage').disabled = currentPage === 0;
+      document.getElementById('nextPage').disabled = currentPage === pages.length - 1;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      updateProgress();
+    }
+
+    function applyMode(mode) {
+      readingMode = mode;
+      localStorage.setItem('readingMode', readingMode);
+      if (readingMode === 'page') {
+        pager.hidden = false;
+        toggleModeButton.textContent = '连续';
+        showPage(currentPage);
+      } else {
+        renderContinuous();
+      }
+    }
+
+    function updateProgress() {
+      let ratio = 0;
+      if (readingMode === 'page' && pages.length > 1) {
+        ratio = currentPage / (pages.length - 1);
+      } else {
+        const scrollTop = window.scrollY || document.documentElement.scrollTop;
+        const height = document.documentElement.scrollHeight - window.innerHeight;
+        ratio = height > 0 ? Math.min(1, Math.max(0, scrollTop / height)) : 0;
+      }
+      progressBar.style.width = `${ratio * 100}%`;
+    }
+
+    document.getElementById('increaseFont').addEventListener('click', () => {
+      const current = Number(localStorage.getItem('fontScale') || 1);
+      const next = Math.min(1.35, current + 0.05);
+      localStorage.setItem('fontScale', next);
+      root.style.setProperty('--font-scale', next);
+    });
+
+    document.getElementById('decreaseFont').addEventListener('click', () => {
+      const current = Number(localStorage.getItem('fontScale') || 1);
+      const next = Math.max(0.85, current - 0.05);
+      localStorage.setItem('fontScale', next);
+      root.style.setProperty('--font-scale', next);
+    });
+
+    document.getElementById('toggleTheme').addEventListener('click', () => {
+      const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.body.dataset.theme = next;
+      localStorage.setItem('theme', next);
+    });
+
+    toggleModeButton.addEventListener('click', () => {
+      applyMode(readingMode === 'page' ? 'scroll' : 'page');
+    });
+
+    document.getElementById('prevPage').addEventListener('click', () => showPage(currentPage - 1));
+    document.getElementById('nextPage').addEventListener('click', () => showPage(currentPage + 1));
+
+    document.addEventListener('keydown', (event) => {
+      if (readingMode !== 'page') return;
+      if (event.key === 'ArrowLeft') showPage(currentPage - 1);
+      if (event.key === 'ArrowRight') showPage(currentPage + 1);
+    });
+
+    reader.addEventListener('copy', (event) => event.preventDefault());
+    reader.addEventListener('cut', (event) => event.preventDefault());
+    reader.addEventListener('contextmenu', (event) => event.preventDefault());
+
+    root.style.setProperty('--font-scale', localStorage.getItem('fontScale') || 1);
+    document.body.dataset.theme = localStorage.getItem('theme') || 'light';
+    window.addEventListener('scroll', updateProgress, { passive: true });
+    loadNovel().then(updateProgress);
+  </script>
+</body>
+</html>
