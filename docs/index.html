@@ -6,7 +6,7 @@
   <title>后来如何</title>
   <meta name="description" content="《后来如何》在线阅读">
   <meta name="robots" content="index,follow,noarchive">
-  <link rel="stylesheet" href="styles.css?v=20260604-reader-scroll-tap">
+  <link rel="stylesheet" href="styles.css?v=20260604-reader-scroll-overlay">
 </head>
 <body class="cover-active">
   <section id="coverScreen" class="cover-screen" aria-label="作品封面">
@@ -37,9 +37,7 @@
   </header>
 
   <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
-  <button type="button" id="scrollTapToggle" class="scroll-tap-toggle" hidden aria-label="显示或隐藏阅读工具栏"></button>
-
-  <main id="layout" class="layout">
+  <main id="layout" class="layout toc-hidden">
     <nav class="toc" aria-label="章节目录">
       <h2>目录</h2>
       <div id="tocList">载入中...</div>
@@ -69,7 +67,6 @@
     const layout = document.getElementById('layout');
     const tocNav = document.querySelector('nav.toc');
     const topbar = document.querySelector('.topbar');
-    const scrollTapToggle = document.getElementById('scrollTapToggle');
     const root = document.documentElement;
     let novelText = '';
     let pages = [];
@@ -157,9 +154,9 @@
         if (readingMode === 'page') {
           event.preventDefault();
           showPage(findDisplayPageBySource(Number(link.dataset.sourceIndex || 0)));
-          applyTocState(true);
-          setChromeVisible(false);
         }
+        applyTocState(true);
+        setChromeVisible(false);
       });
       toc.appendChild(link);
     }
@@ -440,7 +437,6 @@
         renderContinuous();
       }
       applyTocState(tocHidden);
-      syncScrollTapToggle();
     }
 
     function isChromeVisible() {
@@ -465,23 +461,9 @@
       scheduleChromeAutoHide();
     }
 
-    function isMobileReader() {
-      return window.matchMedia('(max-width: 860px)').matches;
-    }
-
-    function syncScrollTapToggle() {
-      if (!scrollTapToggle) return;
-      const showLayer = isMobileReader()
-        && readingMode === 'scroll'
-        && !hasClass(document.body, 'cover-active')
-        && hasClass(document.body, 'chrome-hidden');
-      scrollTapToggle.hidden = !showLayer;
-    }
-
     function setChromeVisible(visible, autoHide = false) {
       clearTimeout(chromeTimer);
       setClass(document.body, 'chrome-hidden', !visible);
-      syncScrollTapToggle();
       if (visible && autoHide) scheduleChromeAutoHide();
     }
 
@@ -543,8 +525,8 @@
     function applyTocState(hidden) {
       tocHidden = hidden;
       localStorage.setItem('tocHidden', String(tocHidden));
-      setClass(layout, 'toc-hidden', tocHidden);
-      setClass(document.body, 'toc-panel-open', readingMode === 'page' && !tocHidden);
+      setClass(layout, 'toc-hidden', true);
+      setClass(document.body, 'toc-panel-open', !tocHidden);
       toggleTocButton.textContent = tocHidden ? '显示目录' : '隐藏目录';
       toggleTocButton.setAttribute('aria-pressed', String(!tocHidden));
       updateProgress();
@@ -610,21 +592,17 @@
     toggleTocButton.addEventListener('click', () => {
       const willShow = tocHidden;
       applyTocState(!tocHidden);
-      if (readingMode === 'page' && willShow) {
+      if (willShow) {
         setChromeVisible(true);
         pauseChromeAutoHide();
         requestAnimationFrame(() => tocList.scrollIntoView({ block: 'nearest' }));
-      } else if (!tocHidden) {
-        setChromeVisible(true);
-        pauseChromeAutoHide();
       }
     });
 
     document.getElementById('layout').addEventListener('click', (event) => {
-      if (readingMode !== 'page' || !hasClass(document.body, 'toc-panel-open')) return;
+      if (!hasClass(document.body, 'toc-panel-open')) return;
       if (event.target.closest('.toc')) return;
       applyTocState(true);
-      setChromeVisible(false);
     });
 
     document.getElementById('prevPage').addEventListener('click', () => showPage(currentPage - 1));
@@ -648,14 +626,6 @@
         return;
       }
       toggleReadingChrome(true);
-    }
-
-    if (scrollTapToggle) {
-      scrollTapToggle.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleReadingChrome(true);
-      });
     }
 
     document.addEventListener('touchstart', (event) => {
@@ -684,7 +654,6 @@
       const snapshot = scrollTouch;
       scrollTouch = null;
       if (!isTapGesture(snapshot, touch)) return;
-      if (scrollTapToggle && !scrollTapToggle.hidden) return;
       suppressScrollClick = true;
       handleScrollModeTap(touch.clientX, touch.clientY);
     }, { capture: true, passive: true });
@@ -731,7 +700,6 @@
     });
 
     window.addEventListener('resize', () => {
-      syncScrollTapToggle();
       if (readingMode === 'page') renderPagedDocument();
     });
 
@@ -755,10 +723,7 @@
       clearTimeout(scrollSaveTimer);
       scrollSaveTimer = setTimeout(saveScrollPosition, 200);
     }, { passive: true });
-    loadNovel().then(() => {
-      updateProgress();
-      syncScrollTapToggle();
-    });
+    loadNovel().then(updateProgress);
   </script>
 </body>
 </html>
