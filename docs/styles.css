@@ -21,6 +21,39 @@ body[data-theme="dark"] {
   --shadow: none;
 }
 
+body[data-theme="green"] {
+  --bg: #dfe9d8;
+  --paper: #edf4e8;
+  --text: #1a2e1a;
+  --muted: #4a6348;
+  --line: #b8ccb2;
+  --accent: #2f6b32;
+  --button: #d4e6cc;
+  --shadow: 0 16px 40px rgba(30, 56, 28, 0.08);
+}
+
+body[data-theme="paper"] {
+  --bg: #ddd0b8;
+  --paper: #f2e6cf;
+  --text: #3a2c1c;
+  --muted: #6f5a42;
+  --line: #cdb895;
+  --accent: #8a4f24;
+  --button: #e8d7b8;
+  --shadow: 0 16px 40px rgba(74, 52, 24, 0.1);
+}
+
+body[data-theme="gray"] {
+  --bg: #d8d8d8;
+  --paper: #ececec;
+  --text: #242424;
+  --muted: #555555;
+  --line: #bdbdbd;
+  --accent: #4a4a4a;
+  --button: #d2d2d2;
+  --shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -43,6 +76,10 @@ body[data-font="hei"] {
 
 body[data-font="kai"] {
   font-family: "KaiTi", "STKaiti", "Kaiti SC", "Noto Serif SC", serif;
+}
+
+body[data-font="fang"] {
+  font-family: "FangSong", "STFangsong", "FangSong_GB2312", "Noto Serif SC", serif;
 }
 
 body.cover-active .topbar,

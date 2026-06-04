@@ -6,7 +6,7 @@
   <title>后来如何</title>
   <meta name="description" content="《后来如何》在线阅读">
   <meta name="robots" content="index,follow,noarchive">
-  <link rel="stylesheet" href="styles.css?v=20260604-reader-toc-dismiss">
+  <link rel="stylesheet" href="styles.css?v=20260604-reader-font-themes">
 </head>
 <body class="cover-active">
   <section id="coverScreen" class="cover-screen" aria-label="作品封面">
@@ -32,7 +32,7 @@
       <button id="toggleFontFamily" type="button" title="切换字体">宋体</button>
       <button id="toggleToc" type="button" title="显示/隐藏目录">隐藏目录</button>
       <button id="toggleMode" type="button" title="切换连续/翻页">翻页</button>
-      <button id="toggleTheme" type="button" title="切换明暗">明/暗</button>
+      <button id="toggleTheme" type="button" title="切换配色">明亮</button>
     </div>
   </header>
 
@@ -65,6 +65,7 @@
     const toggleModeButton = document.getElementById('toggleMode');
     const toggleTocButton = document.getElementById('toggleToc');
     const toggleFontFamilyButton = document.getElementById('toggleFontFamily');
+    const toggleThemeButton = document.getElementById('toggleTheme');
     const layout = document.getElementById('layout');
     const tocNav = document.querySelector('nav.toc');
     const topbar = document.querySelector('.topbar');
@@ -90,8 +91,16 @@
     let scrollTouch = null;
     let lastChromeToggleAt = 0;
     let suppressScrollClick = false;
-    const fontFamilies = ['serif', 'hei', 'kai'];
-    const fontLabels = { serif: '宋体', hei: '黑体', kai: '楷体' };
+    const fontFamilies = ['serif', 'hei', 'kai', 'fang'];
+    const fontLabels = { serif: '宋体', hei: '黑体', kai: '楷体', fang: '仿宋' };
+    const themes = ['light', 'dark', 'green', 'paper', 'gray'];
+    const themeLabels = {
+      light: '明亮',
+      dark: '暗黑',
+      green: '护眼',
+      paper: '纸本',
+      gray: '灰色'
+    };
 
     function hasClass(element, name) {
       return (` ${element.getAttribute('class') || ''} `).indexOf(` ${name} `) >= 0;
@@ -237,11 +246,11 @@
         : (window.matchMedia('(max-width: 860px)').matches ? 76 : 88);
     }
 
-    function restoreScrollToAnchor(sourceIndex) {
-      const snippet = localStorage.getItem('readingMarkerSnippet') || '';
+    function restoreScrollBySnippet(snippet, sourceIndex) {
+      const saved = Number(localStorage.getItem('scrollPosition') || 0);
       const attempt = (triesLeft) => {
         const bySnippet = findScrollElementBySnippet(snippet);
-        const el = bySnippet || findScrollTargetElement(sourceIndex);
+        const el = bySnippet || (sourceIndex !== undefined ? findScrollTargetElement(sourceIndex) : null);
         if (el) {
           const top = el.getBoundingClientRect().top + window.scrollY - scrollChromeOffset();
           window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
@@ -253,11 +262,39 @@
           requestAnimationFrame(() => attempt(triesLeft - 1));
           return;
         }
-        const saved = Number(localStorage.getItem('scrollPosition') || 0);
         window.scrollTo({ top: saved, behavior: 'auto' });
         updateProgress();
       };
       requestAnimationFrame(() => attempt(3));
+    }
+
+    function restoreScrollToAnchor(sourceIndex) {
+      restoreScrollBySnippet(localStorage.getItem('readingMarkerSnippet') || '', sourceIndex);
+    }
+
+    function restoreReadingPositionAfterSettingsChange() {
+      if (!novelReady || hasClass(document.body, 'cover-active')) return;
+      const snippet = localStorage.getItem('readingMarkerSnippet') || '';
+      if (readingMode === 'page') {
+        rebuildDisplayPages();
+        showPage(findDisplayPageBySnippet(snippet));
+        return;
+      }
+      restoreScrollBySnippet(snippet, anchorSourceIndex);
+    }
+
+    function normalizeTheme(theme) {
+      return themes.indexOf(theme) >= 0 ? theme : 'light';
+    }
+
+    function applyTheme(theme) {
+      const normalized = normalizeTheme(theme);
+      document.body.dataset.theme = normalized;
+      localStorage.setItem('theme', normalized);
+      if (toggleThemeButton) {
+        toggleThemeButton.textContent = themeLabels[normalized];
+        toggleThemeButton.title = `配色：${themeLabels[normalized]}（点击切换）`;
+      }
     }
 
     function closeTocPanel() {
@@ -721,34 +758,37 @@
     }
 
     document.getElementById('increaseFont').addEventListener('click', () => {
+      if (novelReady && !hasClass(document.body, 'cover-active')) captureReadingPosition();
       const current = Number(localStorage.getItem('fontScale') || 1);
       const next = Math.min(1.35, current + 0.05);
       localStorage.setItem('fontScale', next);
       root.style.setProperty('--font-scale', next);
-      if (readingMode === 'page') showPage(currentPage);
+      restoreReadingPositionAfterSettingsChange();
     });
 
     document.getElementById('decreaseFont').addEventListener('click', () => {
+      if (novelReady && !hasClass(document.body, 'cover-active')) captureReadingPosition();
       const current = Number(localStorage.getItem('fontScale') || 1);
       const next = Math.max(0.85, current - 0.05);
       localStorage.setItem('fontScale', next);
       root.style.setProperty('--font-scale', next);
-      if (readingMode === 'page') showPage(currentPage);
+      restoreReadingPositionAfterSettingsChange();
     });
 
     toggleFontFamilyButton.addEventListener('click', () => {
+      if (novelReady && !hasClass(document.body, 'cover-active')) captureReadingPosition();
       const current = localStorage.getItem('fontFamily') || 'serif';
       const next = fontFamilies[(fontFamilies.indexOf(current) + 1) % fontFamilies.length];
       localStorage.setItem('fontFamily', next);
       document.body.dataset.font = next;
       toggleFontFamilyButton.textContent = fontLabels[next];
-      if (readingMode === 'page') renderPagedDocument();
+      restoreReadingPositionAfterSettingsChange();
     });
 
-    document.getElementById('toggleTheme').addEventListener('click', () => {
-      const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
-      document.body.dataset.theme = next;
-      localStorage.setItem('theme', next);
+    toggleThemeButton.addEventListener('click', () => {
+      const current = normalizeTheme(document.body.dataset.theme || 'light');
+      const next = themes[(themes.indexOf(current) + 1) % themes.length];
+      applyTheme(next);
     });
 
     document.getElementById('startReading').addEventListener('click', (event) => {
@@ -880,7 +920,10 @@
     });
 
     window.addEventListener('resize', () => {
-      if (readingMode === 'page') renderPagedDocument();
+      if (readingMode === 'page' && novelReady) {
+        captureReadingPosition();
+        restoreReadingPositionAfterSettingsChange();
+      }
     });
 
     document.addEventListener('keydown', (event) => {
@@ -894,8 +937,9 @@
     reader.addEventListener('contextmenu', (event) => event.preventDefault());
 
     root.style.setProperty('--font-scale', localStorage.getItem('fontScale') || 1);
-    document.body.dataset.theme = localStorage.getItem('theme') || 'light';
-    document.body.dataset.font = localStorage.getItem('fontFamily') || 'serif';
+    applyTheme(localStorage.getItem('theme') || 'light');
+    const savedFont = localStorage.getItem('fontFamily') || 'serif';
+    document.body.dataset.font = fontFamilies.indexOf(savedFont) >= 0 ? savedFont : 'serif';
     toggleFontFamilyButton.textContent = fontLabels[document.body.dataset.font] || '宋体';
     applyTocState(tocHidden);
     window.addEventListener('scroll', () => {
