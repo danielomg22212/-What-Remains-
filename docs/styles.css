@@ -470,6 +470,30 @@ body.chrome-hidden .reader {
   color: var(--muted);
 }
 
+.scroll-tap-toggle {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .scroll-tap-toggle:not([hidden]) {
+    display: block;
+    position: fixed;
+    left: 26%;
+    width: 48%;
+    top: 18%;
+    height: 64%;
+    z-index: 15;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    opacity: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+}
+
 @media (max-width: 860px) {
   .cover-screen {
     padding: 22px;

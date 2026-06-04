@@ -6,7 +6,7 @@
   <title>后来如何</title>
   <meta name="description" content="《后来如何》在线阅读">
   <meta name="robots" content="index,follow,noarchive">
-  <link rel="stylesheet" href="styles.css?v=20260604-reader-chrome-touch">
+  <link rel="stylesheet" href="styles.css?v=20260604-reader-scroll-tap">
 </head>
 <body class="cover-active">
   <section id="coverScreen" class="cover-screen" aria-label="作品封面">
@@ -37,6 +37,7 @@
   </header>
 
   <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+  <button type="button" id="scrollTapToggle" class="scroll-tap-toggle" hidden aria-label="显示或隐藏阅读工具栏"></button>
 
   <main id="layout" class="layout">
     <nav class="toc" aria-label="章节目录">
@@ -66,9 +67,9 @@
     const toggleTocButton = document.getElementById('toggleToc');
     const toggleFontFamilyButton = document.getElementById('toggleFontFamily');
     const layout = document.getElementById('layout');
-    const readingColumn = document.querySelector('.reading-column');
     const tocNav = document.querySelector('nav.toc');
     const topbar = document.querySelector('.topbar');
+    const scrollTapToggle = document.getElementById('scrollTapToggle');
     const root = document.documentElement;
     let novelText = '';
     let pages = [];
@@ -86,8 +87,9 @@
     let chromeAutoHidePaused = false;
     let tocTouchActive = 0;
     let tocTouchResumeTimer = null;
-    let scrollTapStart = null;
+    let scrollTouch = null;
     let lastChromeToggleAt = 0;
+    let suppressScrollClick = false;
     const fontFamilies = ['serif', 'hei', 'kai'];
     const fontLabels = { serif: '宋体', hei: '黑体', kai: '楷体' };
 
@@ -426,6 +428,7 @@
     function applyMode(mode) {
       readingMode = mode;
       localStorage.setItem('readingMode', readingMode);
+      scrollTouch = null;
       if (readingMode === 'page') {
         pager.hidden = false;
         toggleModeButton.textContent = '连续';
@@ -437,6 +440,7 @@
         renderContinuous();
       }
       applyTocState(tocHidden);
+      syncScrollTapToggle();
     }
 
     function isChromeVisible() {
@@ -461,9 +465,23 @@
       scheduleChromeAutoHide();
     }
 
+    function isMobileReader() {
+      return window.matchMedia('(max-width: 860px)').matches;
+    }
+
+    function syncScrollTapToggle() {
+      if (!scrollTapToggle) return;
+      const showLayer = isMobileReader()
+        && readingMode === 'scroll'
+        && !hasClass(document.body, 'cover-active')
+        && hasClass(document.body, 'chrome-hidden');
+      scrollTapToggle.hidden = !showLayer;
+    }
+
     function setChromeVisible(visible, autoHide = false) {
       clearTimeout(chromeTimer);
       setClass(document.body, 'chrome-hidden', !visible);
+      syncScrollTapToggle();
       if (visible && autoHide) scheduleChromeAutoHide();
     }
 
@@ -474,12 +492,25 @@
       setChromeVisible(!isChromeVisible(), autoHide);
     }
 
-    function isTapGesture(start, end, maxDuration = 480) {
+    function isTapGesture(start, end, maxDuration = 800, maxMove = 40) {
       if (!start) return false;
       const dx = end.clientX - start.x;
       const dy = end.clientY - start.y;
       const duration = Date.now() - start.t;
-      return duration <= maxDuration && Math.abs(dx) <= 16 && Math.abs(dy) <= 16;
+      return duration <= maxDuration && Math.hypot(dx, dy) <= maxMove;
+    }
+
+    function isInReaderCenter(clientX, clientY) {
+      const rect = reader.getBoundingClientRect();
+      if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+        return false;
+      }
+      const relX = (clientX - rect.left) / Math.max(1, rect.width);
+      return relX >= 0.34 && relX <= 0.66;
+    }
+
+    function isReaderTapTarget(element) {
+      return Boolean(element && element.closest('#reader') && !element.closest('a, button'));
     }
 
     function bindChromePauseTarget(element) {
@@ -600,10 +631,7 @@
     document.getElementById('nextPage').addEventListener('click', () => showPage(currentPage + 1));
 
     function handleScrollModeTap(clientX, clientY) {
-      const rect = reader.getBoundingClientRect();
-      if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
-        return;
-      }
+      if (!isInReaderCenter(clientX, clientY)) return;
       toggleReadingChrome(true);
     }
 
@@ -622,29 +650,48 @@
       toggleReadingChrome(true);
     }
 
-    if (readingColumn) {
-      readingColumn.addEventListener('touchstart', (event) => {
-        if (readingMode !== 'scroll' || event.touches.length !== 1) return;
-        const touch = event.touches[0];
-        scrollTapStart = { x: touch.clientX, y: touch.clientY, t: Date.now() };
-      }, { passive: true });
-
-      readingColumn.addEventListener('touchend', (event) => {
-        if (readingMode !== 'scroll') return;
-        const touch = event.changedTouches[0];
-        if (!isTapGesture(scrollTapStart, touch)) {
-          scrollTapStart = null;
-          return;
-        }
-        scrollTapStart = null;
-        if (event.target.closest('.toc, .topbar, .pager, .tools')) return;
-        handleScrollModeTap(touch.clientX, touch.clientY);
-      }, { passive: true });
-
-      readingColumn.addEventListener('touchcancel', () => {
-        scrollTapStart = null;
-      }, { passive: true });
+    if (scrollTapToggle) {
+      scrollTapToggle.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleReadingChrome(true);
+      });
     }
+
+    document.addEventListener('touchstart', (event) => {
+      if (readingMode !== 'scroll' || hasClass(document.body, 'cover-active') || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      const hit = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (!isReaderTapTarget(hit)) return;
+      scrollTouch = {
+        id: touch.identifier,
+        x: touch.clientX,
+        y: touch.clientY,
+        t: Date.now()
+      };
+    }, { capture: true, passive: true });
+
+    document.addEventListener('touchend', (event) => {
+      if (readingMode !== 'scroll' || !scrollTouch) return;
+      let touch = null;
+      for (let i = 0; i < event.changedTouches.length; i += 1) {
+        if (event.changedTouches[i].identifier === scrollTouch.id) {
+          touch = event.changedTouches[i];
+          break;
+        }
+      }
+      if (!touch) return;
+      const snapshot = scrollTouch;
+      scrollTouch = null;
+      if (!isTapGesture(snapshot, touch)) return;
+      if (scrollTapToggle && !scrollTapToggle.hidden) return;
+      suppressScrollClick = true;
+      handleScrollModeTap(touch.clientX, touch.clientY);
+    }, { capture: true, passive: true });
+
+    document.addEventListener('touchcancel', () => {
+      scrollTouch = null;
+    }, { capture: true, passive: true });
 
     reader.addEventListener('touchstart', (event) => {
       if (readingMode !== 'page' || event.touches.length !== 1) return;
@@ -672,14 +719,19 @@
     reader.addEventListener('click', (event) => {
       if (Date.now() - lastSwipeAt < 350) return;
       if (readingMode !== 'page') {
+        if (suppressScrollClick) {
+          suppressScrollClick = false;
+          return;
+        }
         if (event.target.closest('.toc, .topbar, .pager, .tools')) return;
-        toggleReadingChrome(true);
+        handleScrollModeTap(event.clientX, event.clientY);
         return;
       }
       handlePageModeTap(event.clientX, event.clientY);
     });
 
     window.addEventListener('resize', () => {
+      syncScrollTapToggle();
       if (readingMode === 'page') renderPagedDocument();
     });
 
@@ -703,7 +755,10 @@
       clearTimeout(scrollSaveTimer);
       scrollSaveTimer = setTimeout(saveScrollPosition, 200);
     }, { passive: true });
-    loadNovel().then(updateProgress);
+    loadNovel().then(() => {
+      updateProgress();
+      syncScrollTapToggle();
+    });
   </script>
 </body>
 </html>
