@@ -6,7 +6,7 @@
   <title>后来如何</title>
   <meta name="description" content="《后来如何》在线阅读">
   <meta name="robots" content="index,follow,noarchive">
-  <link rel="stylesheet" href="styles.css?v=20260604-reader-stable">
+  <link rel="stylesheet" href="styles.css?v=20260604-reader-chrome-touch">
 </head>
 <body class="cover-active">
   <section id="coverScreen" class="cover-screen" aria-label="作品封面">
@@ -16,7 +16,7 @@
       </div>
       <div class="cover-actions">
         <a id="startReading" href="#reader">开始阅读</a>
-        <a id="openTocFromCover" href="#tocList">目录</a>
+        <a id="continueReading" href="#reader">继续上次阅读</a>
       </div>
     </div>
   </section>
@@ -66,6 +66,9 @@
     const toggleTocButton = document.getElementById('toggleToc');
     const toggleFontFamilyButton = document.getElementById('toggleFontFamily');
     const layout = document.getElementById('layout');
+    const readingColumn = document.querySelector('.reading-column');
+    const tocNav = document.querySelector('nav.toc');
+    const topbar = document.querySelector('.topbar');
     const root = document.documentElement;
     let novelText = '';
     let pages = [];
@@ -79,6 +82,12 @@
     let touchStartY = 0;
     let lastSwipeAt = 0;
     let chromeTimer = null;
+    let scrollSaveTimer = null;
+    let chromeAutoHidePaused = false;
+    let tocTouchActive = 0;
+    let tocTouchResumeTimer = null;
+    let scrollTapStart = null;
+    let lastChromeToggleAt = 0;
     const fontFamilies = ['serif', 'hei', 'kai'];
     const fontLabels = { serif: '宋体', hei: '黑体', kai: '楷体' };
 
@@ -99,20 +108,33 @@
       else removeClass(element, name);
     }
 
-    function enterReader(showControls = false) {
+    function saveScrollPosition() {
+      if (readingMode !== 'scroll' || hasClass(document.body, 'cover-active')) return;
+      const y = window.scrollY || document.documentElement.scrollTop;
+      localStorage.setItem('scrollPosition', String(y));
+    }
+
+    function enterReader({ fromStart = false } = {}) {
       removeClass(document.body, 'cover-active');
       if (!novelReady) return;
-      if (showControls) {
-        applyMode('scroll');
-        applyTocState(false);
-        setChromeVisible(true);
-        requestAnimationFrame(() => tocList.scrollIntoView({ block: 'start' }));
+      applyTocState(true);
+
+      if (fromStart) {
+        currentPage = 0;
+        localStorage.setItem('currentPage', '0');
+        localStorage.setItem('scrollPosition', '0');
       } else {
-        applyMode(readingMode);
-        if (readingMode !== 'page') {
-          requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
-        }
+        currentPage = Number(localStorage.getItem('currentPage') || 0);
       }
+
+      applyMode(readingMode);
+      if (readingMode === 'page') {
+        showPage(fromStart ? 0 : currentPage);
+      } else {
+        const scrollTop = fromStart ? 0 : Number(localStorage.getItem('scrollPosition') || 0);
+        requestAnimationFrame(() => window.scrollTo({ top: scrollTop, behavior: 'auto' }));
+      }
+      setChromeVisible(false);
     }
 
     function slugify(text, index) {
@@ -133,6 +155,8 @@
         if (readingMode === 'page') {
           event.preventDefault();
           showPage(findDisplayPageBySource(Number(link.dataset.sourceIndex || 0)));
+          applyTocState(true);
+          setChromeVisible(false);
         }
       });
       toc.appendChild(link);
@@ -412,22 +436,86 @@
       } else {
         renderContinuous();
       }
+      applyTocState(tocHidden);
+    }
+
+    function isChromeVisible() {
+      return !hasClass(document.body, 'chrome-hidden');
+    }
+
+    function scheduleChromeAutoHide() {
+      clearTimeout(chromeTimer);
+      if (!isChromeVisible() || chromeAutoHidePaused) return;
+      chromeTimer = setTimeout(() => {
+        if (!chromeAutoHidePaused) setChromeVisible(false);
+      }, 1600);
+    }
+
+    function pauseChromeAutoHide() {
+      chromeAutoHidePaused = true;
+      clearTimeout(chromeTimer);
+    }
+
+    function resumeChromeAutoHide() {
+      chromeAutoHidePaused = false;
+      scheduleChromeAutoHide();
     }
 
     function setChromeVisible(visible, autoHide = false) {
       clearTimeout(chromeTimer);
       setClass(document.body, 'chrome-hidden', !visible);
-      if (visible && autoHide) {
-        chromeTimer = setTimeout(() => setChromeVisible(false), 1600);
-      }
+      if (visible && autoHide) scheduleChromeAutoHide();
     }
+
+    function toggleReadingChrome(autoHide = true) {
+      const now = Date.now();
+      if (now - lastChromeToggleAt < 320) return;
+      lastChromeToggleAt = now;
+      setChromeVisible(!isChromeVisible(), autoHide);
+    }
+
+    function isTapGesture(start, end, maxDuration = 480) {
+      if (!start) return false;
+      const dx = end.clientX - start.x;
+      const dy = end.clientY - start.y;
+      const duration = Date.now() - start.t;
+      return duration <= maxDuration && Math.abs(dx) <= 16 && Math.abs(dy) <= 16;
+    }
+
+    function bindChromePauseTarget(element) {
+      if (!element) return;
+      element.addEventListener('mouseenter', pauseChromeAutoHide);
+      element.addEventListener('mouseleave', () => {
+        if (tocTouchActive > 0) return;
+        resumeChromeAutoHide();
+      });
+      element.addEventListener('touchstart', () => {
+        tocTouchActive += 1;
+        pauseChromeAutoHide();
+      }, { passive: true });
+      const onTouchEnd = () => {
+        tocTouchActive = Math.max(0, tocTouchActive - 1);
+        clearTimeout(tocTouchResumeTimer);
+        tocTouchResumeTimer = setTimeout(() => {
+          if (tocTouchActive === 0) resumeChromeAutoHide();
+        }, 450);
+      };
+      element.addEventListener('touchend', onTouchEnd, { passive: true });
+      element.addEventListener('touchcancel', onTouchEnd, { passive: true });
+      element.addEventListener('scroll', pauseChromeAutoHide, { passive: true });
+      element.addEventListener('pointerdown', pauseChromeAutoHide);
+    }
+
+    bindChromePauseTarget(tocNav);
+    bindChromePauseTarget(topbar);
 
     function applyTocState(hidden) {
       tocHidden = hidden;
       localStorage.setItem('tocHidden', String(tocHidden));
       setClass(layout, 'toc-hidden', tocHidden);
+      setClass(document.body, 'toc-panel-open', readingMode === 'page' && !tocHidden);
       toggleTocButton.textContent = tocHidden ? '显示目录' : '隐藏目录';
-      toggleTocButton.setAttribute('aria-pressed', String(tocHidden));
+      toggleTocButton.setAttribute('aria-pressed', String(!tocHidden));
       updateProgress();
     }
 
@@ -476,12 +564,12 @@
 
     document.getElementById('startReading').addEventListener('click', (event) => {
       event.preventDefault();
-      enterReader(false);
+      enterReader({ fromStart: true });
     });
 
-    document.getElementById('openTocFromCover').addEventListener('click', (event) => {
+    document.getElementById('continueReading').addEventListener('click', (event) => {
       event.preventDefault();
-      enterReader(true);
+      enterReader({ fromStart: false });
     });
 
     toggleModeButton.addEventListener('click', () => {
@@ -489,22 +577,78 @@
     });
 
     toggleTocButton.addEventListener('click', () => {
-      if (readingMode === 'page') {
-        applyMode('scroll');
-        applyTocState(false);
-        setChromeVisible(true);
-        requestAnimationFrame(() => tocList.scrollIntoView({ block: 'start' }));
-        return;
-      }
+      const willShow = tocHidden;
       applyTocState(!tocHidden);
+      if (readingMode === 'page' && willShow) {
+        setChromeVisible(true);
+        pauseChromeAutoHide();
+        requestAnimationFrame(() => tocList.scrollIntoView({ block: 'nearest' }));
+      } else if (!tocHidden) {
+        setChromeVisible(true);
+        pauseChromeAutoHide();
+      }
+    });
+
+    document.getElementById('layout').addEventListener('click', (event) => {
+      if (readingMode !== 'page' || !hasClass(document.body, 'toc-panel-open')) return;
+      if (event.target.closest('.toc')) return;
+      applyTocState(true);
+      setChromeVisible(false);
     });
 
     document.getElementById('prevPage').addEventListener('click', () => showPage(currentPage - 1));
     document.getElementById('nextPage').addEventListener('click', () => showPage(currentPage + 1));
 
+    function handleScrollModeTap(clientX, clientY) {
+      const rect = reader.getBoundingClientRect();
+      if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+        return;
+      }
+      toggleReadingChrome(true);
+    }
+
+    function handlePageModeTap(clientX, clientY) {
+      const rect = reader.getBoundingClientRect();
+      const width = Math.max(1, rect.width);
+      const x = clientX - rect.left;
+      if (x < width * 0.34) {
+        showPage(currentPage - 1);
+        return;
+      }
+      if (x > width * 0.66) {
+        showPage(currentPage + 1);
+        return;
+      }
+      toggleReadingChrome(true);
+    }
+
+    if (readingColumn) {
+      readingColumn.addEventListener('touchstart', (event) => {
+        if (readingMode !== 'scroll' || event.touches.length !== 1) return;
+        const touch = event.touches[0];
+        scrollTapStart = { x: touch.clientX, y: touch.clientY, t: Date.now() };
+      }, { passive: true });
+
+      readingColumn.addEventListener('touchend', (event) => {
+        if (readingMode !== 'scroll') return;
+        const touch = event.changedTouches[0];
+        if (!isTapGesture(scrollTapStart, touch)) {
+          scrollTapStart = null;
+          return;
+        }
+        scrollTapStart = null;
+        if (event.target.closest('.toc, .topbar, .pager, .tools')) return;
+        handleScrollModeTap(touch.clientX, touch.clientY);
+      }, { passive: true });
+
+      readingColumn.addEventListener('touchcancel', () => {
+        scrollTapStart = null;
+      }, { passive: true });
+    }
+
     reader.addEventListener('touchstart', (event) => {
-      if (readingMode !== 'page') return;
-      const touch = event.changedTouches[0];
+      if (readingMode !== 'page' || event.touches.length !== 1) return;
+      const touch = event.touches[0];
       touchStartX = touch.clientX;
       touchStartY = touch.clientY;
     }, { passive: true });
@@ -517,27 +661,22 @@
       if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) {
         lastSwipeAt = Date.now();
         showPage(currentPage + (dx < 0 ? 1 : -1));
+        return;
+      }
+      if (Date.now() - lastSwipeAt < 350) return;
+      if (Math.abs(dx) <= 16 && Math.abs(dy) <= 16) {
+        handlePageModeTap(touch.clientX, touch.clientY);
       }
     }, { passive: true });
 
     reader.addEventListener('click', (event) => {
       if (Date.now() - lastSwipeAt < 350) return;
       if (readingMode !== 'page') {
-        setChromeVisible(hasClass(document.body, 'chrome-hidden'), true);
+        if (event.target.closest('.toc, .topbar, .pager, .tools')) return;
+        toggleReadingChrome(true);
         return;
       }
-      const rect = reader.getBoundingClientRect();
-      const width = Math.max(1, rect.width);
-      const x = typeof event.offsetX === 'number' ? event.offsetX : event.clientX - rect.left;
-      if (x < width * 0.34) {
-        showPage(currentPage - 1);
-        return;
-      }
-      if (x > width * 0.66) {
-        showPage(currentPage + 1);
-        return;
-      }
-      setChromeVisible(hasClass(document.body, 'chrome-hidden'), true);
+      handlePageModeTap(event.clientX, event.clientY);
     });
 
     window.addEventListener('resize', () => {
@@ -559,7 +698,11 @@
     document.body.dataset.font = localStorage.getItem('fontFamily') || 'serif';
     toggleFontFamilyButton.textContent = fontLabels[document.body.dataset.font] || '宋体';
     applyTocState(tocHidden);
-    window.addEventListener('scroll', updateProgress, { passive: true });
+    window.addEventListener('scroll', () => {
+      updateProgress();
+      clearTimeout(scrollSaveTimer);
+      scrollSaveTimer = setTimeout(saveScrollPosition, 200);
+    }, { passive: true });
     loadNovel().then(updateProgress);
   </script>
 </body>

@@ -268,8 +268,33 @@ body[data-mode="page"] .layout {
   overflow: hidden;
 }
 
-body[data-mode="page"] .toc {
+body[data-mode="page"]:not(.toc-panel-open) .toc {
   display: none;
+}
+
+body[data-mode="page"].toc-panel-open::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: rgba(15, 14, 12, 0.42);
+}
+
+body[data-mode="page"].toc-panel-open .toc {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 30;
+  width: min(320px, 88vw);
+  max-height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  border-left: none;
+  border-top: none;
+  border-bottom: none;
+  box-shadow: 8px 0 32px rgba(0, 0, 0, 0.18);
 }
 
 body[data-mode="page"] .topbar {
@@ -423,8 +448,11 @@ body[data-mode="page"] .pager {
 }
 
 body.chrome-hidden .topbar,
-body.chrome-hidden .toc,
 body.chrome-hidden .pager {
+  display: none;
+}
+
+body.chrome-hidden:not(.toc-panel-open) .layout > .toc {
   display: none;
 }
 
@@ -472,8 +500,17 @@ body.chrome-hidden .reader {
     margin-bottom: 16px;
   }
 
+  .reading-column,
+  .reader {
+    touch-action: manipulation;
+  }
+
   .reader {
     padding: 28px 18px 48px;
+  }
+
+  .toc {
+    touch-action: pan-y;
   }
 
   .reader h2 {
