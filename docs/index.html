@@ -6,7 +6,7 @@
   <title>后来如何</title>
   <meta name="description" content="《后来如何》在线阅读">
   <meta name="robots" content="index,follow,noarchive">
-  <link rel="stylesheet" href="styles.css?v=20260604-reader-scroll-overlay">
+  <link rel="stylesheet" href="styles.css?v=20260604-reader-mode-position">
 </head>
 <body class="cover-active">
   <section id="coverScreen" class="cover-screen" aria-label="作品封面">
@@ -75,6 +75,7 @@
     let novelReady = false;
     let readingMode = localStorage.getItem('readingMode') || 'scroll';
     let currentPage = Number(localStorage.getItem('currentPage') || 0);
+    let anchorSourceIndex = Number(localStorage.getItem('readingAnchorSource') || 0);
     let tocHidden = localStorage.getItem('tocHidden') === 'true';
     let touchStartX = 0;
     let touchStartY = 0;
@@ -107,6 +108,103 @@
       else removeClass(element, name);
     }
 
+    function persistReadingAnchor(sourceIndex) {
+      if (!pages.length) return;
+      anchorSourceIndex = Math.max(0, Math.min(sourceIndex, pages.length - 1));
+      localStorage.setItem('readingAnchorSource', String(anchorSourceIndex));
+    }
+
+    function findSourceIndexByElementId(id) {
+      if (!id) return anchorSourceIndex;
+      for (let i = 0; i < pages.length; i += 1) {
+        for (const node of pages[i].nodes) {
+          if (node.id === id) return i;
+        }
+      }
+      return anchorSourceIndex;
+    }
+
+    function captureScrollReadingPosition() {
+      const markerY = window.scrollY + Math.min(window.innerHeight * 0.18, 120);
+      let bestEl = null;
+      let bestTop = -Infinity;
+      reader.querySelectorAll('h2[id], h3[id], .book-title').forEach((el) => {
+        const top = el.getBoundingClientRect().top + window.scrollY;
+        if (top <= markerY + 4 && top >= bestTop) {
+          bestTop = top;
+          bestEl = el;
+        }
+      });
+      if (!bestEl) {
+        reader.querySelectorAll('p').forEach((el) => {
+          const top = el.getBoundingClientRect().top + window.scrollY;
+          if (top <= markerY && top >= bestTop) {
+            bestTop = top;
+            bestEl = el;
+          }
+        });
+      }
+      if (bestEl && bestEl.id) return findSourceIndexByElementId(bestEl.id);
+
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      if (maxScroll > 0 && pages.length > 1) {
+        const ratio = window.scrollY / maxScroll;
+        return Math.min(pages.length - 1, Math.floor(ratio * pages.length));
+      }
+      return anchorSourceIndex;
+    }
+
+    function captureReadingPosition() {
+      if (readingMode === 'scroll' && !hasClass(document.body, 'cover-active')) {
+        const y = window.scrollY || document.documentElement.scrollTop;
+        localStorage.setItem('scrollPosition', String(y));
+        persistReadingAnchor(captureScrollReadingPosition());
+        return;
+      }
+      if (readingMode === 'page' && displayPages.length) {
+        const sources = displayPages[currentPage]?.sources;
+        if (sources && sources.length) persistReadingAnchor(Math.min(...sources));
+      }
+    }
+
+    function findScrollTargetElement(sourceIndex) {
+      const page = pages[sourceIndex];
+      if (!page) return null;
+      for (const node of page.nodes) {
+        if (!node.id) continue;
+        const el = document.getElementById(node.id);
+        if (el && reader.contains(el)) return el;
+      }
+      return null;
+    }
+
+    function scrollChromeOffset() {
+      return hasClass(document.body, 'chrome-hidden')
+        ? 12
+        : (window.matchMedia('(max-width: 860px)').matches ? 76 : 88);
+    }
+
+    function restoreScrollToAnchor(sourceIndex) {
+      const attempt = (triesLeft) => {
+        const el = findScrollTargetElement(sourceIndex);
+        if (el) {
+          const top = el.getBoundingClientRect().top + window.scrollY - scrollChromeOffset();
+          window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+          localStorage.setItem('scrollPosition', String(window.scrollY));
+          updateProgress();
+          return;
+        }
+        if (triesLeft > 0) {
+          requestAnimationFrame(() => attempt(triesLeft - 1));
+          return;
+        }
+        const saved = Number(localStorage.getItem('scrollPosition') || 0);
+        window.scrollTo({ top: saved, behavior: 'auto' });
+        updateProgress();
+      };
+      requestAnimationFrame(() => attempt(3));
+    }
+
     function saveScrollPosition() {
       if (readingMode !== 'scroll' || hasClass(document.body, 'cover-active')) return;
       const y = window.scrollY || document.documentElement.scrollTop;
@@ -119,20 +217,16 @@
       applyTocState(true);
 
       if (fromStart) {
+        persistReadingAnchor(0);
         currentPage = 0;
         localStorage.setItem('currentPage', '0');
         localStorage.setItem('scrollPosition', '0');
       } else {
+        anchorSourceIndex = Number(localStorage.getItem('readingAnchorSource') || 0);
         currentPage = Number(localStorage.getItem('currentPage') || 0);
       }
 
-      applyMode(readingMode);
-      if (readingMode === 'page') {
-        showPage(fromStart ? 0 : currentPage);
-      } else {
-        const scrollTop = fromStart ? 0 : Number(localStorage.getItem('scrollPosition') || 0);
-        requestAnimationFrame(() => window.scrollTo({ top: scrollTop, behavior: 'auto' }));
-      }
+      applyMode(readingMode, { skipCapture: true });
       setChromeVisible(false);
     }
 
@@ -310,11 +404,9 @@
     }
 
     function findDisplayPageBySource(sourceIndex) {
-      if (readingMode === 'page') {
-        const index = displayPages.findIndex((page) => page.sources.indexOf(sourceIndex) >= 0);
-        return index >= 0 ? index : 0;
-      }
-      return 0;
+      if (!displayPages.length) return 0;
+      const index = displayPages.findIndex((page) => page.sources.indexOf(sourceIndex) >= 0);
+      return index >= 0 ? index : 0;
     }
 
     function allContentNodes() {
@@ -363,7 +455,7 @@
       updateProgress();
     }
 
-    function renderPagedDocument() {
+    function rebuildDisplayPages() {
       addClass(reader, 'paged-reader');
       displayPages = [];
       const units = allContentNodes().flatMap(splitForPagination);
@@ -398,8 +490,14 @@
       }
 
       pageCount = Math.max(1, displayPages.length);
-      currentPage = Math.max(0, Math.min(currentPage, pageCount - 1));
-      showPage(currentPage);
+    }
+
+    function renderPagedDocument(pageIndex) {
+      rebuildDisplayPages();
+      let target = pageIndex;
+      if (target === undefined) target = currentPage;
+      target = Math.max(0, Math.min(target, pageCount - 1));
+      showPage(target);
     }
 
     function updatePagedMetrics() {
@@ -419,10 +517,17 @@
       currentPage = Math.max(0, Math.min(index, pageCount - 1));
       localStorage.setItem('currentPage', currentPage);
       reader.replaceChildren(...cloneNodes(displayPages[currentPage].nodes));
+      const sources = displayPages[currentPage]?.sources;
+      if (sources && sources.length) persistReadingAnchor(Math.min(...sources));
       updatePagedMetrics();
     }
 
-    function applyMode(mode) {
+    function applyMode(mode, options = {}) {
+      const previousMode = readingMode;
+      if (novelReady && !options.skipCapture && previousMode !== mode) {
+        captureReadingPosition();
+      }
+
       readingMode = mode;
       localStorage.setItem('readingMode', readingMode);
       scrollTouch = null;
@@ -430,11 +535,13 @@
         pager.hidden = false;
         toggleModeButton.textContent = '连续';
         document.body.dataset.mode = 'page';
-        renderPagedDocument();
-        showPage(currentPage);
+        rebuildDisplayPages();
+        showPage(findDisplayPageBySource(anchorSourceIndex));
         setChromeVisible(false);
       } else {
         renderContinuous();
+        restoreScrollToAnchor(anchorSourceIndex);
+        setChromeVisible(false);
       }
       applyTocState(tocHidden);
     }
