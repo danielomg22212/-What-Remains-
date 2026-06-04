@@ -110,6 +110,15 @@ body {
   padding: 34px 24px 80px;
 }
 
+.layout.toc-hidden {
+  grid-template-columns: minmax(0, 880px);
+  max-width: 980px;
+}
+
+.layout.toc-hidden .toc {
+  display: none;
+}
+
 .toc {
   position: sticky;
   top: 86px;
@@ -268,6 +277,10 @@ body {
   .layout {
     display: block;
     padding: 16px 12px 56px;
+  }
+
+  .layout.toc-hidden {
+    max-width: none;
   }
 
   .toc {

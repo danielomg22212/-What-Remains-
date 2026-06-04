@@ -17,6 +17,7 @@
     <div class="tools" aria-label="阅读设置">
       <button id="decreaseFont" type="button" title="减小字号">A-</button>
       <button id="increaseFont" type="button" title="增大字号">A+</button>
+      <button id="toggleToc" type="button" title="显示/隐藏目录">隐藏目录</button>
       <button id="toggleMode" type="button" title="切换连续/翻页">翻页</button>
       <button id="toggleTheme" type="button" title="切换明暗">明/暗</button>
     </div>
@@ -24,7 +25,7 @@
 
   <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
 
-  <main class="layout">
+  <main id="layout" class="layout">
     <nav class="toc" aria-label="章节目录">
       <h2>目录</h2>
       <div id="tocList">载入中...</div>
@@ -48,11 +49,14 @@
     const pager = document.getElementById('pager');
     const pageInfo = document.getElementById('pageInfo');
     const toggleModeButton = document.getElementById('toggleMode');
+    const toggleTocButton = document.getElementById('toggleToc');
+    const layout = document.getElementById('layout');
     const root = document.documentElement;
     let novelText = '';
     let pages = [];
     let readingMode = localStorage.getItem('readingMode') || 'scroll';
     let currentPage = Number(localStorage.getItem('currentPage') || 0);
+    let tocHidden = localStorage.getItem('tocHidden') === 'true';
 
     function slugify(text, index) {
       return `chapter-${index}-${text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
@@ -253,6 +257,15 @@
       }
     }
 
+    function applyTocState(hidden) {
+      tocHidden = hidden;
+      localStorage.setItem('tocHidden', String(tocHidden));
+      layout.classList.toggle('toc-hidden', tocHidden);
+      toggleTocButton.textContent = tocHidden ? '显示目录' : '隐藏目录';
+      toggleTocButton.setAttribute('aria-pressed', String(tocHidden));
+      updateProgress();
+    }
+
     function updateProgress() {
       let ratio = 0;
       if (readingMode === 'page' && pages.length > 1) {
@@ -289,6 +302,10 @@
       applyMode(readingMode === 'page' ? 'scroll' : 'page');
     });
 
+    toggleTocButton.addEventListener('click', () => {
+      applyTocState(!tocHidden);
+    });
+
     document.getElementById('prevPage').addEventListener('click', () => showPage(currentPage - 1));
     document.getElementById('nextPage').addEventListener('click', () => showPage(currentPage + 1));
 
@@ -304,6 +321,7 @@
 
     root.style.setProperty('--font-scale', localStorage.getItem('fontScale') || 1);
     document.body.dataset.theme = localStorage.getItem('theme') || 'light';
+    applyTocState(tocHidden);
     window.addEventListener('scroll', updateProgress, { passive: true });
     loadNovel().then(updateProgress);
   </script>
