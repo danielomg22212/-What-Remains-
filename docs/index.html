@@ -6,7 +6,7 @@
   <title>后来如何</title>
   <meta name="description" content="《后来如何》在线阅读">
   <meta name="robots" content="index,follow,noarchive">
-  <link rel="stylesheet" href="styles.css?v=20260604-reader-mode-position">
+  <link rel="stylesheet" href="styles.css?v=20260604-reader-toc-dismiss">
 </head>
 <body class="cover-active">
   <section id="coverScreen" class="cover-screen" aria-label="作品封面">
@@ -37,6 +37,7 @@
   </header>
 
   <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+  <div id="tocBackdrop" class="toc-backdrop" hidden aria-hidden="true"></div>
   <main id="layout" class="layout toc-hidden">
     <nav class="toc" aria-label="章节目录">
       <h2>目录</h2>
@@ -67,6 +68,7 @@
     const layout = document.getElementById('layout');
     const tocNav = document.querySelector('nav.toc');
     const topbar = document.querySelector('.topbar');
+    const tocBackdrop = document.getElementById('tocBackdrop');
     const root = document.documentElement;
     let novelText = '';
     let pages = [];
@@ -154,16 +156,67 @@
       return anchorSourceIndex;
     }
 
+    function captureScrollMarkerSnippet() {
+      const markerY = window.scrollY + Math.min(window.innerHeight * 0.12, 96);
+      let bestEl = null;
+      let bestTop = -Infinity;
+      reader.querySelectorAll('p, h2, h3, .book-title').forEach((el) => {
+        const top = el.getBoundingClientRect().top + window.scrollY;
+        if (top <= markerY + 2 && top >= bestTop) {
+          bestTop = top;
+          bestEl = el;
+        }
+      });
+      return bestEl ? bestEl.textContent.trim().slice(0, 120) : '';
+    }
+
+    function persistMarkerSnippet(snippet) {
+      if (snippet) localStorage.setItem('readingMarkerSnippet', snippet);
+    }
+
+    function textsMatch(a, b) {
+      if (!a || !b) return false;
+      const left = a.slice(0, 48);
+      const right = b.slice(0, 48);
+      return left === right || a.includes(right) || b.includes(left);
+    }
+
+    function findDisplayPageBySnippet(snippet) {
+      if (!snippet || !displayPages.length) return findDisplayPageBySource(anchorSourceIndex);
+      for (let i = 0; i < displayPages.length; i += 1) {
+        for (const node of displayPages[i].nodes) {
+          const text = (node.textContent || '').trim();
+          if (textsMatch(text, snippet)) return i;
+        }
+      }
+      return findDisplayPageBySource(anchorSourceIndex);
+    }
+
+    function findScrollElementBySnippet(snippet) {
+      if (!snippet) return null;
+      let target = null;
+      reader.querySelectorAll('p, h2, h3, .book-title').forEach((el) => {
+        if (!target && textsMatch(el.textContent.trim(), snippet)) target = el;
+      });
+      return target;
+    }
+
     function captureReadingPosition() {
       if (readingMode === 'scroll' && !hasClass(document.body, 'cover-active')) {
         const y = window.scrollY || document.documentElement.scrollTop;
         localStorage.setItem('scrollPosition', String(y));
         persistReadingAnchor(captureScrollReadingPosition());
+        persistMarkerSnippet(captureScrollMarkerSnippet());
         return;
       }
       if (readingMode === 'page' && displayPages.length) {
+        localStorage.setItem('currentPage', String(currentPage));
         const sources = displayPages[currentPage]?.sources;
         if (sources && sources.length) persistReadingAnchor(Math.min(...sources));
+        const nodes = displayPages[currentPage].nodes;
+        if (nodes && nodes.length) {
+          persistMarkerSnippet((nodes[0].textContent || '').trim().slice(0, 120));
+        }
       }
     }
 
@@ -185,8 +238,10 @@
     }
 
     function restoreScrollToAnchor(sourceIndex) {
+      const snippet = localStorage.getItem('readingMarkerSnippet') || '';
       const attempt = (triesLeft) => {
-        const el = findScrollTargetElement(sourceIndex);
+        const bySnippet = findScrollElementBySnippet(snippet);
+        const el = bySnippet || findScrollTargetElement(sourceIndex);
         if (el) {
           const top = el.getBoundingClientRect().top + window.scrollY - scrollChromeOffset();
           window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
@@ -205,6 +260,12 @@
       requestAnimationFrame(() => attempt(3));
     }
 
+    function closeTocPanel() {
+      if (!hasClass(document.body, 'toc-panel-open')) return false;
+      applyTocState(true);
+      return true;
+    }
+
     function saveScrollPosition() {
       if (readingMode !== 'scroll' || hasClass(document.body, 'cover-active')) return;
       const y = window.scrollY || document.documentElement.scrollTop;
@@ -221,6 +282,7 @@
         currentPage = 0;
         localStorage.setItem('currentPage', '0');
         localStorage.setItem('scrollPosition', '0');
+        localStorage.setItem('readingMarkerSnippet', '');
       } else {
         anchorSourceIndex = Number(localStorage.getItem('readingAnchorSource') || 0);
         currentPage = Number(localStorage.getItem('currentPage') || 0);
@@ -250,7 +312,7 @@
           showPage(findDisplayPageBySource(Number(link.dataset.sourceIndex || 0)));
         }
         applyTocState(true);
-        setChromeVisible(false);
+        if (readingMode === 'page') setChromeVisible(false);
       });
       toc.appendChild(link);
     }
@@ -519,6 +581,8 @@
       reader.replaceChildren(...cloneNodes(displayPages[currentPage].nodes));
       const sources = displayPages[currentPage]?.sources;
       if (sources && sources.length) persistReadingAnchor(Math.min(...sources));
+      const nodes = displayPages[currentPage]?.nodes;
+      if (nodes && nodes.length) persistMarkerSnippet((nodes[0].textContent || '').trim().slice(0, 120));
       updatePagedMetrics();
     }
 
@@ -536,7 +600,8 @@
         toggleModeButton.textContent = '连续';
         document.body.dataset.mode = 'page';
         rebuildDisplayPages();
-        showPage(findDisplayPageBySource(anchorSourceIndex));
+        const snippet = localStorage.getItem('readingMarkerSnippet') || '';
+        showPage(findDisplayPageBySnippet(snippet));
         setChromeVisible(false);
       } else {
         renderContinuous();
@@ -634,6 +699,10 @@
       localStorage.setItem('tocHidden', String(tocHidden));
       setClass(layout, 'toc-hidden', true);
       setClass(document.body, 'toc-panel-open', !tocHidden);
+      if (tocBackdrop) {
+        tocBackdrop.hidden = hidden;
+        tocBackdrop.setAttribute('aria-hidden', String(hidden));
+      }
       toggleTocButton.textContent = tocHidden ? '显示目录' : '隐藏目录';
       toggleTocButton.setAttribute('aria-pressed', String(!tocHidden));
       updateProgress();
@@ -706,21 +775,25 @@
       }
     });
 
-    document.getElementById('layout').addEventListener('click', (event) => {
-      if (!hasClass(document.body, 'toc-panel-open')) return;
-      if (event.target.closest('.toc')) return;
-      applyTocState(true);
-    });
+    if (tocBackdrop) {
+      tocBackdrop.addEventListener('click', closeTocPanel);
+      tocBackdrop.addEventListener('touchend', (event) => {
+        event.preventDefault();
+        closeTocPanel();
+      });
+    }
 
     document.getElementById('prevPage').addEventListener('click', () => showPage(currentPage - 1));
     document.getElementById('nextPage').addEventListener('click', () => showPage(currentPage + 1));
 
     function handleScrollModeTap(clientX, clientY) {
+      if (closeTocPanel()) return;
       if (!isInReaderCenter(clientX, clientY)) return;
       toggleReadingChrome(true);
     }
 
     function handlePageModeTap(clientX, clientY) {
+      if (closeTocPanel()) return;
       const rect = reader.getBoundingClientRect();
       const width = Math.max(1, rect.width);
       const x = clientX - rect.left;
