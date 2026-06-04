@@ -6,7 +6,7 @@
   <title>后来如何</title>
   <meta name="description" content="《后来如何》在线阅读">
   <meta name="robots" content="index,follow,noarchive">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260604-immersive">
 </head>
 <body>
   <header class="topbar">
@@ -60,6 +60,8 @@
     let tocHidden = localStorage.getItem('tocHidden') === 'true';
     let touchStartX = 0;
     let touchStartY = 0;
+    let lastSwipeAt = 0;
+    let chromeTimer = null;
 
     function slugify(text, index) {
       return `chapter-${index}-${text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
@@ -323,6 +325,8 @@
       reader.replaceChildren(fragment);
       pager.hidden = true;
       toggleModeButton.textContent = '翻页';
+      document.body.dataset.mode = 'scroll';
+      setChromeVisible(false);
       updateProgress();
     }
 
@@ -346,9 +350,19 @@
       if (readingMode === 'page') {
         pager.hidden = false;
         toggleModeButton.textContent = '连续';
+        document.body.dataset.mode = 'page';
         showPage(currentPage);
+        setChromeVisible(false);
       } else {
         renderContinuous();
+      }
+    }
+
+    function setChromeVisible(visible, autoHide = false) {
+      clearTimeout(chromeTimer);
+      document.body.classList.toggle('chrome-hidden', !visible);
+      if (visible && autoHide) {
+        chromeTimer = setTimeout(() => setChromeVisible(false), 1600);
       }
     }
 
@@ -419,9 +433,29 @@
       const dx = touch.clientX - touchStartX;
       const dy = touch.clientY - touchStartY;
       if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+        lastSwipeAt = Date.now();
         showPage(currentPage + (dx < 0 ? 1 : -1));
       }
     }, { passive: true });
+
+    reader.addEventListener('click', (event) => {
+      if (Date.now() - lastSwipeAt < 350) return;
+      if (readingMode !== 'page') {
+        setChromeVisible(document.body.classList.contains('chrome-hidden'), true);
+        return;
+      }
+      const width = reader.getBoundingClientRect().width;
+      const x = event.clientX - reader.getBoundingClientRect().left;
+      if (x < width * 0.28) {
+        showPage(currentPage - 1);
+        return;
+      }
+      if (x > width * 0.72) {
+        showPage(currentPage + 1);
+        return;
+      }
+      setChromeVisible(document.body.classList.contains('chrome-hidden'), true);
+    });
 
     window.addEventListener('resize', () => {
       if (readingMode === 'page') showPage(currentPage);
