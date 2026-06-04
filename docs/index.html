@@ -6,7 +6,7 @@
   <title>后来如何</title>
   <meta name="description" content="《后来如何》在线阅读">
   <meta name="robots" content="index,follow,noarchive">
-  <link rel="stylesheet" href="styles.css?v=20260604-cover-entry-fix">
+  <link rel="stylesheet" href="styles.css?v=20260604-reader-stable">
 </head>
 <body class="cover-active">
   <section id="coverScreen" class="cover-screen" aria-label="作品封面">
@@ -69,7 +69,9 @@
     const root = document.documentElement;
     let novelText = '';
     let pages = [];
+    let displayPages = [];
     let pageCount = 1;
+    let novelReady = false;
     let readingMode = localStorage.getItem('readingMode') || 'scroll';
     let currentPage = Number(localStorage.getItem('currentPage') || 0);
     let tocHidden = localStorage.getItem('tocHidden') === 'true';
@@ -99,9 +101,17 @@
 
     function enterReader(showControls = false) {
       removeClass(document.body, 'cover-active');
-      setChromeVisible(showControls);
+      if (!novelReady) return;
       if (showControls) {
+        applyMode('scroll');
         applyTocState(false);
+        setChromeVisible(true);
+        requestAnimationFrame(() => tocList.scrollIntoView({ block: 'start' }));
+      } else {
+        applyMode(readingMode);
+        if (readingMode !== 'page') {
+          requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
+        }
       }
     }
 
@@ -249,7 +259,15 @@
 
       if (!pages.length) pages.push({ title: '正文', id: 'page-0', nodes: [] });
       tocList.replaceChildren(toc);
-      applyMode(readingMode);
+      novelReady = true;
+      if (hasClass(document.body, 'cover-active')) {
+        reader.replaceChildren();
+        pager.hidden = true;
+        document.body.dataset.mode = readingMode;
+        toggleModeButton.textContent = readingMode === 'page' ? '连续' : '翻页';
+      } else {
+        applyMode(readingMode);
+      }
     }
 
     async function loadNovel() {
@@ -270,18 +288,42 @@
 
     function findDisplayPageBySource(sourceIndex) {
       if (readingMode === 'page') {
-        const source = pages[sourceIndex];
-        const target = source ? reader.querySelector(`#${CSS.escape(source.id)}`) : null;
-        const width = Math.max(1, reader.clientWidth);
-        return target ? Math.max(0, Math.floor(target.offsetLeft / width)) : 0;
+        const index = displayPages.findIndex((page) => page.sources.indexOf(sourceIndex) >= 0);
+        return index >= 0 ? index : 0;
       }
       return 0;
     }
 
     function allContentNodes() {
       const nodes = [];
-      pages.forEach((page) => cloneNodes(page.nodes).forEach((node) => nodes.push(node)));
+      pages.forEach((page, sourceIndex) => {
+        cloneNodes(page.nodes).forEach((node) => nodes.push({ node, sourceIndex }));
+      });
       return nodes;
+    }
+
+    function splitForPagination(item) {
+      const node = item.node;
+      const text = (node.textContent || '').trim();
+      if (node.tagName !== 'P' || text.length <= 180) return [item];
+
+      const parts = [];
+      let rest = text;
+      while (rest.length > 180) {
+        let cut = rest.lastIndexOf('。', 180);
+        if (cut < 80) cut = rest.lastIndexOf('，', 180);
+        if (cut < 80) cut = rest.lastIndexOf('；', 180);
+        if (cut < 80) cut = 180;
+        parts.push(rest.slice(0, cut + 1).trim());
+        rest = rest.slice(cut + 1).trim();
+      }
+      if (rest) parts.push(rest);
+
+      return parts.map((part) => {
+        const p = document.createElement('p');
+        p.textContent = part;
+        return { node: p, sourceIndex: item.sourceIndex };
+      });
     }
 
     function renderContinuous() {
@@ -299,23 +341,46 @@
     }
 
     function renderPagedDocument() {
-      const flow = document.createElement('div');
-      flow.className = 'page-flow';
-      allContentNodes().forEach((node) => flow.appendChild(node));
       addClass(reader, 'paged-reader');
-      reader.replaceChildren(flow);
-      updatePagedMetrics();
+      displayPages = [];
+      const units = allContentNodes().flatMap(splitForPagination);
+      let current = [];
+      let currentSources = [];
+
+      const fits = (candidate) => {
+        reader.replaceChildren(...cloneNodes(candidate.map((item) => item.node)));
+        return reader.scrollHeight <= reader.clientHeight + 2;
+      };
+
+      units.forEach((item) => {
+        const candidate = current.concat(item);
+        if (current.length && !fits(candidate)) {
+          displayPages.push({
+            nodes: current.map((entry) => entry.node),
+            sources: Array.from(new Set(currentSources))
+          });
+          current = [item];
+          currentSources = [item.sourceIndex];
+        } else {
+          current = candidate;
+          currentSources.push(item.sourceIndex);
+        }
+      });
+
+      if (current.length) {
+        displayPages.push({
+          nodes: current.map((entry) => entry.node),
+          sources: Array.from(new Set(currentSources))
+        });
+      }
+
+      pageCount = Math.max(1, displayPages.length);
+      currentPage = Math.max(0, Math.min(currentPage, pageCount - 1));
+      showPage(currentPage);
     }
 
     function updatePagedMetrics() {
-      const flow = reader.querySelector('.page-flow');
-      if (!flow) return;
-      const width = Math.max(1, reader.clientWidth);
-      flow.style.columnWidth = `${width}px`;
-      flow.style.width = `${width}px`;
-      pageCount = Math.max(1, Math.ceil(flow.scrollWidth / width));
       currentPage = Math.max(0, Math.min(currentPage, pageCount - 1));
-      flow.style.transform = `translateX(${-currentPage * width}px)`;
       pageInfo.textContent = `${currentPage + 1} / ${pageCount}`;
       document.getElementById('prevPage').disabled = currentPage === 0;
       document.getElementById('nextPage').disabled = currentPage === pageCount - 1;
@@ -324,9 +389,13 @@
 
     function showPage(index) {
       if (readingMode !== 'page') return;
-      if (!reader.querySelector('.page-flow')) renderPagedDocument();
+      if (!displayPages.length) {
+        renderPagedDocument();
+        return;
+      }
       currentPage = Math.max(0, Math.min(index, pageCount - 1));
       localStorage.setItem('currentPage', currentPage);
+      reader.replaceChildren(...cloneNodes(displayPages[currentPage].nodes));
       updatePagedMetrics();
     }
 
@@ -396,7 +465,7 @@
       localStorage.setItem('fontFamily', next);
       document.body.dataset.font = next;
       toggleFontFamilyButton.textContent = fontLabels[next];
-      if (readingMode === 'page') updatePagedMetrics();
+      if (readingMode === 'page') renderPagedDocument();
     });
 
     document.getElementById('toggleTheme').addEventListener('click', () => {
@@ -405,11 +474,13 @@
       localStorage.setItem('theme', next);
     });
 
-    document.getElementById('startReading').addEventListener('click', () => {
+    document.getElementById('startReading').addEventListener('click', (event) => {
+      event.preventDefault();
       enterReader(false);
     });
 
-    document.getElementById('openTocFromCover').addEventListener('click', () => {
+    document.getElementById('openTocFromCover').addEventListener('click', (event) => {
+      event.preventDefault();
       enterReader(true);
     });
 
@@ -418,6 +489,13 @@
     });
 
     toggleTocButton.addEventListener('click', () => {
+      if (readingMode === 'page') {
+        applyMode('scroll');
+        applyTocState(false);
+        setChromeVisible(true);
+        requestAnimationFrame(() => tocList.scrollIntoView({ block: 'start' }));
+        return;
+      }
       applyTocState(!tocHidden);
     });
 
@@ -448,13 +526,14 @@
         setChromeVisible(hasClass(document.body, 'chrome-hidden'), true);
         return;
       }
-      const width = reader.getBoundingClientRect().width;
-      const x = event.clientX - reader.getBoundingClientRect().left;
-      if (x < width * 0.28) {
+      const rect = reader.getBoundingClientRect();
+      const width = Math.max(1, rect.width);
+      const x = typeof event.offsetX === 'number' ? event.offsetX : event.clientX - rect.left;
+      if (x < width * 0.34) {
         showPage(currentPage - 1);
         return;
       }
-      if (x > width * 0.72) {
+      if (x > width * 0.66) {
         showPage(currentPage + 1);
         return;
       }
@@ -462,7 +541,7 @@
     });
 
     window.addEventListener('resize', () => {
-      if (readingMode === 'page') updatePagedMetrics();
+      if (readingMode === 'page') renderPagedDocument();
     });
 
     document.addEventListener('keydown', (event) => {

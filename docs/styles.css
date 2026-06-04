@@ -46,11 +46,19 @@ body[data-font="kai"] {
 }
 
 body.cover-active .topbar,
-body.cover-active .progress {
-  display: none;
+body.cover-active .progress,
+body.cover-active .layout {
+  display: none !important;
+}
+
+body.cover-active {
+  overflow: hidden;
 }
 
 .cover-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
   min-height: 100vh;
   display: none;
   place-items: center;
@@ -107,16 +115,6 @@ body.cover-active .cover-screen {
   background: #8f3d2f;
   border-color: #a84a3a;
   color: #fff7ee;
-}
-
-body.chrome-hidden .layout {
-  grid-template-columns: minmax(0, 900px);
-  max-width: 980px;
-  padding-top: 18px;
-}
-
-body.chrome-hidden .reader {
-  box-shadow: none;
 }
 
 .topbar {
@@ -262,38 +260,57 @@ body[data-mode="page"] {
 
 body[data-mode="page"] .layout {
   display: block;
-  max-width: min(920px, 100vw);
-  padding: 18px 18px 0;
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 body[data-mode="page"] .toc {
   display: none;
 }
 
-body[data-mode="page"] .reader {
-  height: calc(100vh - 132px);
+body[data-mode="page"] .topbar {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  right: auto;
+  width: min(920px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+body[data-mode="page"] .reading-column {
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
-  padding: 42px 52px;
+}
+
+body[data-mode="page"] .reader {
+  width: min(920px, calc(100vw - 32px));
+  height: calc(100vh - 24px);
+  margin: 12px auto;
+  overflow: hidden;
+  padding: clamp(28px, 5vw, 58px);
+  border-radius: 8px;
 }
 
 body[data-mode="page"].chrome-hidden .layout {
-  max-width: min(920px, 100vw);
-  padding: 12px 18px 0;
+  max-width: none;
+  padding: 0;
 }
 
 body[data-mode="page"].chrome-hidden .reader {
   height: calc(100vh - 24px);
+  box-shadow: none;
 }
 
-.reader.paged-reader .page-flow {
-  height: 100%;
-  column-gap: 0;
-  column-fill: auto;
-  transition: transform 0.16s ease;
-}
-
-.reader.paged-reader p {
-  break-inside: auto;
+.reader.paged-reader {
+  touch-action: pan-y;
 }
 
 .reading-column {
@@ -312,6 +329,16 @@ body[data-mode="page"].chrome-hidden .reader {
   background: var(--paper);
   box-shadow: var(--shadow);
   transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+body[data-mode="page"] .pager {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 12;
+  width: min(420px, calc(100vw - 32px));
+  margin: 0;
+  transform: translateX(-50%);
 }
 
 .pager[hidden] {
@@ -378,7 +405,8 @@ body[data-mode="page"].chrome-hidden .reader {
 .reader p {
   margin: 0 0 1.05em;
   font-size: calc(18px * var(--font-scale));
-  text-align: justify;
+  text-align: left;
+  text-indent: 2em;
   word-break: break-word;
 }
 
@@ -397,9 +425,17 @@ body[data-mode="page"].chrome-hidden .reader {
 body.chrome-hidden .topbar,
 body.chrome-hidden .toc,
 body.chrome-hidden .pager {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-10px);
+  display: none;
+}
+
+body.chrome-hidden .layout {
+  grid-template-columns: minmax(0, 880px);
+  max-width: 980px;
+  padding-top: 18px;
+}
+
+body.chrome-hidden .reader {
+  box-shadow: none;
 }
 
 .loading {
@@ -419,14 +455,6 @@ body.chrome-hidden .pager {
     position: static;
     align-items: flex-start;
     padding: 16px;
-  }
-
-  body.chrome-hidden .topbar {
-    display: none;
-  }
-
-  body.chrome-hidden .layout {
-    padding-top: 10px;
   }
 
   .layout {
@@ -456,22 +484,28 @@ body.chrome-hidden .pager {
     margin-top: 28px;
   }
 
-  body:has(.pager:not([hidden])) .reader {
-    min-height: calc(100vh - 245px);
-    padding-bottom: 32px;
+  body[data-mode="page"] .topbar {
+    top: 8px;
+    width: calc(100vw - 16px);
+    padding: 12px;
   }
 
-  body[data-mode="page"].chrome-hidden .reader {
-    min-height: calc(100vh - 24px);
+  body[data-mode="page"] .reader {
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 30px 22px;
     border-color: transparent;
     border-radius: 0;
   }
 
-  .pager {
-    position: sticky;
-    bottom: 10px;
-    z-index: 8;
-    margin: 12px 0 0;
+  body[data-mode="page"].chrome-hidden .reader {
+    height: 100vh;
+  }
+
+  body[data-mode="page"] .pager {
+    bottom: 12px;
+    width: calc(100vw - 24px);
     padding: 10px;
   }
 
