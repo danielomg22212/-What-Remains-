@@ -8,7 +8,17 @@
   <meta name="robots" content="index,follow,noarchive">
   <link rel="stylesheet" href="styles.css?v=20260604-immersive">
 </head>
-<body>
+<body class="cover-active">
+  <section id="coverScreen" class="cover-screen" aria-label="作品封面">
+    <div class="cover-shell">
+      <img src="cover.png" alt="《后来如何》封面" class="cover-image">
+      <div class="cover-actions">
+        <button id="startReading" type="button">开始阅读</button>
+        <button id="openTocFromCover" type="button">目录</button>
+      </div>
+    </div>
+  </section>
+
   <header class="topbar">
     <div>
       <h1>后来如何</h1>
@@ -17,6 +27,7 @@
     <div class="tools" aria-label="阅读设置">
       <button id="decreaseFont" type="button" title="减小字号">A-</button>
       <button id="increaseFont" type="button" title="增大字号">A+</button>
+      <button id="toggleFontFamily" type="button" title="切换字体">宋体</button>
       <button id="toggleToc" type="button" title="显示/隐藏目录">隐藏目录</button>
       <button id="toggleMode" type="button" title="切换连续/翻页">翻页</button>
       <button id="toggleTheme" type="button" title="切换明暗">明/暗</button>
@@ -44,17 +55,19 @@
 
   <script>
     const reader = document.getElementById('reader');
+    const coverScreen = document.getElementById('coverScreen');
     const tocList = document.getElementById('tocList');
     const progressBar = document.getElementById('progressBar');
     const pager = document.getElementById('pager');
     const pageInfo = document.getElementById('pageInfo');
     const toggleModeButton = document.getElementById('toggleMode');
     const toggleTocButton = document.getElementById('toggleToc');
+    const toggleFontFamilyButton = document.getElementById('toggleFontFamily');
     const layout = document.getElementById('layout');
     const root = document.documentElement;
     let novelText = '';
     let pages = [];
-    let displayPages = [];
+    let pageCount = 1;
     let readingMode = localStorage.getItem('readingMode') || 'scroll';
     let currentPage = Number(localStorage.getItem('currentPage') || 0);
     let tocHidden = localStorage.getItem('tocHidden') === 'true';
@@ -62,6 +75,16 @@
     let touchStartY = 0;
     let lastSwipeAt = 0;
     let chromeTimer = null;
+    const fontFamilies = ['serif', 'hei', 'kai'];
+    const fontLabels = { serif: '宋体', hei: '黑体', kai: '楷体' };
+
+    function enterReader(showControls = false) {
+      document.body.classList.remove('cover-active');
+      setChromeVisible(showControls);
+      if (showControls) {
+        applyTocState(false);
+      }
+    }
 
     function slugify(text, index) {
       return `chapter-${index}-${text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
@@ -226,95 +249,20 @@
       return nodes.map((node) => node.cloneNode(true));
     }
 
-    function isMobileLayout() {
-      return window.matchMedia('(max-width: 860px)').matches;
-    }
-
-    function mobileCharLimit() {
-      const scale = Number(localStorage.getItem('fontScale') || 1);
-      const fontSize = 17 * scale;
-      const width = Math.max(280, Math.min(window.innerWidth - 36, 720));
-      const height = Math.max(360, window.innerHeight - 190);
-      const charsPerLine = Math.max(12, Math.floor(width / (fontSize * 1.04)));
-      const lines = Math.max(8, Math.floor(height / (fontSize * 1.9)));
-      return Math.max(280, Math.min(850, Math.floor(charsPerLine * lines * 0.88)));
-    }
-
-    function splitText(text, limit) {
-      const parts = [];
-      let rest = text.trim();
-      while (rest.length > limit) {
-        let cut = rest.lastIndexOf('。', limit);
-        if (cut < limit * 0.55) cut = rest.lastIndexOf('，', limit);
-        if (cut < limit * 0.55) cut = rest.lastIndexOf('；', limit);
-        if (cut < limit * 0.55) cut = limit;
-        parts.push(rest.slice(0, cut + 1).trim());
-        rest = rest.slice(cut + 1).trim();
-      }
-      if (rest) parts.push(rest);
-      return parts;
-    }
-
-    function makeContinuationTitle(title) {
-      const div = document.createElement('div');
-      div.className = 'page-continuation';
-      div.textContent = `${title}（续）`;
-      return div;
-    }
-
-    function buildDisplayPages() {
-      if (!isMobileLayout()) {
-        displayPages = pages.map((page, index) => ({ ...page, sourceIndex: index }));
-        return;
-      }
-
-      const limit = mobileCharLimit();
-      const nextPages = [];
-      pages.forEach((page, sourceIndex) => {
-        let chunk = { title: page.title, id: `${page.id}-m-${nextPages.length}`, sourceIndex, nodes: [] };
-        let count = 0;
-
-        function commit() {
-          if (chunk.nodes.length) nextPages.push(chunk);
-          chunk = {
-            title: page.title,
-            id: `${page.id}-m-${nextPages.length}`,
-            sourceIndex,
-            nodes: [makeContinuationTitle(page.title)]
-          };
-          count = Math.min(80, page.title.length * 2);
-        }
-
-        page.nodes.forEach((node) => {
-          const text = (node.textContent || '').trim();
-          const isHeading = /^H[23]$/.test(node.tagName) || node.classList?.contains('book-title') || node.classList?.contains('byline');
-          if (isHeading) {
-            chunk.nodes.push(node);
-            count += Math.min(120, text.length * 2 + 30);
-            return;
-          }
-
-          const parts = node.tagName === 'P' ? splitText(text, Math.floor(limit * 0.72)) : [text];
-          parts.forEach((part) => {
-            if (!part) return;
-            const chars = part.length;
-            if (chunk.nodes.length > 1 && count + chars > limit) commit();
-            const newNode = node.cloneNode(false);
-            newNode.textContent = part;
-            chunk.nodes.push(newNode);
-            count += chars + 18;
-          });
-        });
-
-        if (chunk.nodes.length) nextPages.push(chunk);
-      });
-
-      displayPages = nextPages;
-    }
-
     function findDisplayPageBySource(sourceIndex) {
-      const index = displayPages.findIndex((page) => page.sourceIndex === sourceIndex);
-      return index >= 0 ? index : 0;
+      if (readingMode === 'page') {
+        const source = pages[sourceIndex];
+        const target = source ? reader.querySelector(`#${CSS.escape(source.id)}`) : null;
+        const width = Math.max(1, reader.clientWidth);
+        return target ? Math.max(0, Math.floor(target.offsetLeft / width)) : 0;
+      }
+      return 0;
+    }
+
+    function allContentNodes() {
+      const nodes = [];
+      pages.forEach((page) => cloneNodes(page.nodes).forEach((node) => nodes.push(node)));
+      return nodes;
     }
 
     function renderContinuous() {
@@ -322,6 +270,7 @@
       pages.forEach((page) => {
         cloneNodes(page.nodes).forEach((node) => fragment.appendChild(node));
       });
+      reader.classList.remove('paged-reader');
       reader.replaceChildren(fragment);
       pager.hidden = true;
       toggleModeButton.textContent = '翻页';
@@ -330,18 +279,36 @@
       updateProgress();
     }
 
-    function showPage(index) {
-      buildDisplayPages();
-      if (!displayPages.length) return;
-      currentPage = Math.max(0, Math.min(index, displayPages.length - 1));
-      localStorage.setItem('currentPage', currentPage);
-      const page = displayPages[currentPage];
-      reader.replaceChildren(...cloneNodes(page.nodes));
-      pageInfo.textContent = `${currentPage + 1} / ${displayPages.length}`;
+    function renderPagedDocument() {
+      const flow = document.createElement('div');
+      flow.className = 'page-flow';
+      allContentNodes().forEach((node) => flow.appendChild(node));
+      reader.classList.add('paged-reader');
+      reader.replaceChildren(flow);
+      updatePagedMetrics();
+    }
+
+    function updatePagedMetrics() {
+      const flow = reader.querySelector('.page-flow');
+      if (!flow) return;
+      const width = Math.max(1, reader.clientWidth);
+      flow.style.columnWidth = `${width}px`;
+      flow.style.width = `${width}px`;
+      pageCount = Math.max(1, Math.ceil(flow.scrollWidth / width));
+      currentPage = Math.max(0, Math.min(currentPage, pageCount - 1));
+      flow.style.transform = `translateX(${-currentPage * width}px)`;
+      pageInfo.textContent = `${currentPage + 1} / ${pageCount}`;
       document.getElementById('prevPage').disabled = currentPage === 0;
-      document.getElementById('nextPage').disabled = currentPage === displayPages.length - 1;
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.getElementById('nextPage').disabled = currentPage === pageCount - 1;
       updateProgress();
+    }
+
+    function showPage(index) {
+      if (readingMode !== 'page') return;
+      if (!reader.querySelector('.page-flow')) renderPagedDocument();
+      currentPage = Math.max(0, Math.min(index, pageCount - 1));
+      localStorage.setItem('currentPage', currentPage);
+      updatePagedMetrics();
     }
 
     function applyMode(mode) {
@@ -351,6 +318,7 @@
         pager.hidden = false;
         toggleModeButton.textContent = '连续';
         document.body.dataset.mode = 'page';
+        renderPagedDocument();
         showPage(currentPage);
         setChromeVisible(false);
       } else {
@@ -377,8 +345,8 @@
 
     function updateProgress() {
       let ratio = 0;
-      if (readingMode === 'page' && displayPages.length > 1) {
-        ratio = currentPage / (displayPages.length - 1);
+      if (readingMode === 'page' && pageCount > 1) {
+        ratio = currentPage / (pageCount - 1);
       } else {
         const scrollTop = window.scrollY || document.documentElement.scrollTop;
         const height = document.documentElement.scrollHeight - window.innerHeight;
@@ -403,10 +371,27 @@
       if (readingMode === 'page') showPage(currentPage);
     });
 
+    toggleFontFamilyButton.addEventListener('click', () => {
+      const current = localStorage.getItem('fontFamily') || 'serif';
+      const next = fontFamilies[(fontFamilies.indexOf(current) + 1) % fontFamilies.length];
+      localStorage.setItem('fontFamily', next);
+      document.body.dataset.font = next;
+      toggleFontFamilyButton.textContent = fontLabels[next];
+      if (readingMode === 'page') updatePagedMetrics();
+    });
+
     document.getElementById('toggleTheme').addEventListener('click', () => {
       const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
       document.body.dataset.theme = next;
       localStorage.setItem('theme', next);
+    });
+
+    document.getElementById('startReading').addEventListener('click', () => {
+      enterReader(false);
+    });
+
+    document.getElementById('openTocFromCover').addEventListener('click', () => {
+      enterReader(true);
     });
 
     toggleModeButton.addEventListener('click', () => {
@@ -458,7 +443,7 @@
     });
 
     window.addEventListener('resize', () => {
-      if (readingMode === 'page') showPage(currentPage);
+      if (readingMode === 'page') updatePagedMetrics();
     });
 
     document.addEventListener('keydown', (event) => {
@@ -473,6 +458,8 @@
 
     root.style.setProperty('--font-scale', localStorage.getItem('fontScale') || 1);
     document.body.dataset.theme = localStorage.getItem('theme') || 'light';
+    document.body.dataset.font = localStorage.getItem('fontFamily') || 'serif';
+    toggleFontFamilyButton.textContent = fontLabels[document.body.dataset.font] || '宋体';
     applyTocState(tocHidden);
     window.addEventListener('scroll', updateProgress, { passive: true });
     loadNovel().then(updateProgress);

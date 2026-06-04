@@ -37,6 +37,70 @@ body {
   line-height: 1.9;
 }
 
+body[data-font="hei"] {
+  font-family: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+body[data-font="kai"] {
+  font-family: "KaiTi", "STKaiti", "Kaiti SC", "Noto Serif SC", serif;
+}
+
+body.cover-active {
+  overflow: hidden;
+}
+
+body.cover-active .topbar,
+body.cover-active .progress,
+body.cover-active .layout {
+  display: none;
+}
+
+.cover-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(143, 61, 47, 0.2), transparent 34%),
+    linear-gradient(135deg, #11100f, #27221d 54%, #0f0f0e);
+}
+
+.cover-shell {
+  width: min(420px, 88vw);
+}
+
+.cover-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 10px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+}
+
+.cover-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.cover-actions button {
+  border: 1px solid rgba(238, 230, 216, 0.2);
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: rgba(241, 232, 220, 0.12);
+  color: #f0e9dc;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cover-actions button:first-child {
+  background: #8f3d2f;
+  border-color: #a84a3a;
+  color: #fff7ee;
+}
+
 body.chrome-hidden .layout {
   grid-template-columns: minmax(0, 900px);
   max-width: 980px;
@@ -184,6 +248,46 @@ body.chrome-hidden .reader {
   user-select: none;
 }
 
+body[data-mode="page"] {
+  overflow: hidden;
+}
+
+body[data-mode="page"] .layout {
+  display: block;
+  max-width: min(920px, 100vw);
+  padding: 18px 18px 0;
+}
+
+body[data-mode="page"] .toc {
+  display: none;
+}
+
+body[data-mode="page"] .reader {
+  height: calc(100vh - 132px);
+  overflow: hidden;
+  padding: 42px 52px;
+}
+
+body[data-mode="page"].chrome-hidden .layout {
+  max-width: min(920px, 100vw);
+  padding: 12px 18px 0;
+}
+
+body[data-mode="page"].chrome-hidden .reader {
+  height: calc(100vh - 24px);
+}
+
+.reader.paged-reader .page-flow {
+  height: 100%;
+  column-gap: 0;
+  column-fill: auto;
+  transition: transform 0.16s ease;
+}
+
+.reader.paged-reader p {
+  break-inside: auto;
+}
+
 .reading-column {
   min-width: 0;
 }
@@ -295,6 +399,14 @@ body.chrome-hidden .pager {
 }
 
 @media (max-width: 860px) {
+  .cover-screen {
+    padding: 22px;
+  }
+
+  .cover-shell {
+    width: min(360px, 86vw);
+  }
+
   .topbar {
     position: static;
     align-items: flex-start;
