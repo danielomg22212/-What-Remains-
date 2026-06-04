@@ -6,15 +6,21 @@
   <title>后来如何</title>
   <meta name="description" content="《后来如何》在线阅读">
   <meta name="robots" content="index,follow,noarchive">
-  <link rel="stylesheet" href="styles.css?v=20260604-immersive">
+  <link rel="stylesheet" href="styles.css?v=20260604-cover-fix">
 </head>
 <body class="cover-active">
   <section id="coverScreen" class="cover-screen" aria-label="作品封面">
     <div class="cover-shell">
-      <img src="cover.png" alt="《后来如何》封面" class="cover-image">
+      <div class="cover-card">
+        <img src="cover.svg" alt="" class="cover-image" aria-hidden="true">
+        <div class="cover-title-block">
+          <div class="cover-title-text">后来如何</div>
+          <div class="cover-author-text">潇思雨</div>
+        </div>
+      </div>
       <div class="cover-actions">
-        <button id="startReading" type="button">开始阅读</button>
-        <button id="openTocFromCover" type="button">目录</button>
+        <button id="startReading" type="button" onclick="document.body.className=document.body.className.replace('cover-active','').trim(); if(document.body.className.indexOf('chrome-hidden')<0){document.body.className=(document.body.className+' chrome-hidden').trim();}">开始阅读</button>
+        <button id="openTocFromCover" type="button" onclick="document.body.className=document.body.className.replace('cover-active','').replace('chrome-hidden','').trim(); var l=document.getElementById('layout'); if(l){l.className=l.className.replace('toc-hidden','').trim();}">目录</button>
       </div>
     </div>
   </section>
@@ -78,8 +84,25 @@
     const fontFamilies = ['serif', 'hei', 'kai'];
     const fontLabels = { serif: '宋体', hei: '黑体', kai: '楷体' };
 
+    function hasClass(element, name) {
+      return (` ${element.className} `).indexOf(` ${name} `) >= 0;
+    }
+
+    function addClass(element, name) {
+      if (!hasClass(element, name)) element.className = `${element.className} ${name}`.trim();
+    }
+
+    function removeClass(element, name) {
+      element.className = (` ${element.className} `).replace(` ${name} `, ' ').trim();
+    }
+
+    function setClass(element, name, enabled) {
+      if (enabled) addClass(element, name);
+      else removeClass(element, name);
+    }
+
     function enterReader(showControls = false) {
-      document.body.classList.remove('cover-active');
+      removeClass(document.body, 'cover-active');
       setChromeVisible(showControls);
       if (showControls) {
         applyTocState(false);
@@ -270,7 +293,7 @@
       pages.forEach((page) => {
         cloneNodes(page.nodes).forEach((node) => fragment.appendChild(node));
       });
-      reader.classList.remove('paged-reader');
+      removeClass(reader, 'paged-reader');
       reader.replaceChildren(fragment);
       pager.hidden = true;
       toggleModeButton.textContent = '翻页';
@@ -283,7 +306,7 @@
       const flow = document.createElement('div');
       flow.className = 'page-flow';
       allContentNodes().forEach((node) => flow.appendChild(node));
-      reader.classList.add('paged-reader');
+      addClass(reader, 'paged-reader');
       reader.replaceChildren(flow);
       updatePagedMetrics();
     }
@@ -328,7 +351,7 @@
 
     function setChromeVisible(visible, autoHide = false) {
       clearTimeout(chromeTimer);
-      document.body.classList.toggle('chrome-hidden', !visible);
+      setClass(document.body, 'chrome-hidden', !visible);
       if (visible && autoHide) {
         chromeTimer = setTimeout(() => setChromeVisible(false), 1600);
       }
@@ -337,7 +360,7 @@
     function applyTocState(hidden) {
       tocHidden = hidden;
       localStorage.setItem('tocHidden', String(tocHidden));
-      layout.classList.toggle('toc-hidden', tocHidden);
+      setClass(layout, 'toc-hidden', tocHidden);
       toggleTocButton.textContent = tocHidden ? '显示目录' : '隐藏目录';
       toggleTocButton.setAttribute('aria-pressed', String(tocHidden));
       updateProgress();
@@ -426,7 +449,7 @@
     reader.addEventListener('click', (event) => {
       if (Date.now() - lastSwipeAt < 350) return;
       if (readingMode !== 'page') {
-        setChromeVisible(document.body.classList.contains('chrome-hidden'), true);
+        setChromeVisible(hasClass(document.body, 'chrome-hidden'), true);
         return;
       }
       const width = reader.getBoundingClientRect().width;
@@ -439,7 +462,7 @@
         showPage(currentPage + 1);
         return;
       }
-      setChromeVisible(document.body.classList.contains('chrome-hidden'), true);
+      setChromeVisible(hasClass(document.body, 'chrome-hidden'), true);
     });
 
     window.addEventListener('resize', () => {

@@ -69,13 +69,48 @@ body.cover-active .layout {
   width: min(420px, 88vw);
 }
 
+.cover-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+  background: #151412;
+}
+
 .cover-image {
   display: block;
   width: 100%;
   aspect-ratio: 2 / 3;
   object-fit: cover;
-  border-radius: 10px;
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+}
+
+.cover-title-block {
+  position: absolute;
+  inset: 0;
+  padding: 13% 13%;
+  color: #f1eadf;
+  pointer-events: none;
+}
+
+.cover-title-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: clamp(46px, 10vw, 72px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+  text-shadow: 0 4px 22px rgba(0, 0, 0, 0.55);
+}
+
+.cover-author-text {
+  position: absolute;
+  top: 13%;
+  left: 28%;
+  writing-mode: vertical-rl;
+  color: rgba(241, 234, 223, 0.72);
+  font-size: clamp(18px, 4vw, 28px);
+  letter-spacing: 0.08em;
+  text-shadow: 0 3px 14px rgba(0, 0, 0, 0.55);
 }
 
 .cover-actions {
