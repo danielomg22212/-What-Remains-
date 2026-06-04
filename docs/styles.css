@@ -216,6 +216,12 @@ body {
   font-size: 14px;
 }
 
+.page-continuation {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: calc(14px * var(--font-scale));
+}
+
 .book-title {
   margin: 0 0 8px;
   text-align: center;
@@ -291,6 +297,32 @@ body {
 
   .reader {
     padding: 28px 18px 48px;
+  }
+
+  .reader h2 {
+    margin-top: 32px;
+  }
+
+  .reader h3 {
+    margin-top: 28px;
+  }
+
+  body:has(.pager:not([hidden])) .reader {
+    min-height: calc(100vh - 245px);
+    padding-bottom: 32px;
+  }
+
+  .pager {
+    position: sticky;
+    bottom: 10px;
+    z-index: 8;
+    margin: 12px 0 0;
+    padding: 10px;
+  }
+
+  .pager button {
+    min-width: 78px;
+    padding: 8px 10px;
   }
 
   .book-title {

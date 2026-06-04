@@ -54,9 +54,12 @@
     const root = document.documentElement;
     let novelText = '';
     let pages = [];
+    let displayPages = [];
     let readingMode = localStorage.getItem('readingMode') || 'scroll';
     let currentPage = Number(localStorage.getItem('currentPage') || 0);
     let tocHidden = localStorage.getItem('tocHidden') === 'true';
+    let touchStartX = 0;
+    let touchStartY = 0;
 
     function slugify(text, index) {
       return `chapter-${index}-${text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
@@ -71,11 +74,11 @@
       link.href = `#${element.id}`;
       link.textContent = text;
       if (className) link.className = className;
-      link.dataset.pageIndex = String(pages.length - 1);
+      link.dataset.sourceIndex = String(pages.length - 1);
       link.addEventListener('click', (event) => {
         if (readingMode === 'page') {
           event.preventDefault();
-          showPage(Number(link.dataset.pageIndex || 0));
+          showPage(findDisplayPageBySource(Number(link.dataset.sourceIndex || 0)));
         }
       });
       toc.appendChild(link);
@@ -221,6 +224,97 @@
       return nodes.map((node) => node.cloneNode(true));
     }
 
+    function isMobileLayout() {
+      return window.matchMedia('(max-width: 860px)').matches;
+    }
+
+    function mobileCharLimit() {
+      const scale = Number(localStorage.getItem('fontScale') || 1);
+      const fontSize = 17 * scale;
+      const width = Math.max(280, Math.min(window.innerWidth - 36, 720));
+      const height = Math.max(360, window.innerHeight - 190);
+      const charsPerLine = Math.max(12, Math.floor(width / (fontSize * 1.04)));
+      const lines = Math.max(8, Math.floor(height / (fontSize * 1.9)));
+      return Math.max(280, Math.min(850, Math.floor(charsPerLine * lines * 0.88)));
+    }
+
+    function splitText(text, limit) {
+      const parts = [];
+      let rest = text.trim();
+      while (rest.length > limit) {
+        let cut = rest.lastIndexOf('。', limit);
+        if (cut < limit * 0.55) cut = rest.lastIndexOf('，', limit);
+        if (cut < limit * 0.55) cut = rest.lastIndexOf('；', limit);
+        if (cut < limit * 0.55) cut = limit;
+        parts.push(rest.slice(0, cut + 1).trim());
+        rest = rest.slice(cut + 1).trim();
+      }
+      if (rest) parts.push(rest);
+      return parts;
+    }
+
+    function makeContinuationTitle(title) {
+      const div = document.createElement('div');
+      div.className = 'page-continuation';
+      div.textContent = `${title}（续）`;
+      return div;
+    }
+
+    function buildDisplayPages() {
+      if (!isMobileLayout()) {
+        displayPages = pages.map((page, index) => ({ ...page, sourceIndex: index }));
+        return;
+      }
+
+      const limit = mobileCharLimit();
+      const nextPages = [];
+      pages.forEach((page, sourceIndex) => {
+        let chunk = { title: page.title, id: `${page.id}-m-${nextPages.length}`, sourceIndex, nodes: [] };
+        let count = 0;
+
+        function commit() {
+          if (chunk.nodes.length) nextPages.push(chunk);
+          chunk = {
+            title: page.title,
+            id: `${page.id}-m-${nextPages.length}`,
+            sourceIndex,
+            nodes: [makeContinuationTitle(page.title)]
+          };
+          count = Math.min(80, page.title.length * 2);
+        }
+
+        page.nodes.forEach((node) => {
+          const text = (node.textContent || '').trim();
+          const isHeading = /^H[23]$/.test(node.tagName) || node.classList?.contains('book-title') || node.classList?.contains('byline');
+          if (isHeading) {
+            chunk.nodes.push(node);
+            count += Math.min(120, text.length * 2 + 30);
+            return;
+          }
+
+          const parts = node.tagName === 'P' ? splitText(text, Math.floor(limit * 0.72)) : [text];
+          parts.forEach((part) => {
+            if (!part) return;
+            const chars = part.length;
+            if (chunk.nodes.length > 1 && count + chars > limit) commit();
+            const newNode = node.cloneNode(false);
+            newNode.textContent = part;
+            chunk.nodes.push(newNode);
+            count += chars + 18;
+          });
+        });
+
+        if (chunk.nodes.length) nextPages.push(chunk);
+      });
+
+      displayPages = nextPages;
+    }
+
+    function findDisplayPageBySource(sourceIndex) {
+      const index = displayPages.findIndex((page) => page.sourceIndex === sourceIndex);
+      return index >= 0 ? index : 0;
+    }
+
     function renderContinuous() {
       const fragment = document.createDocumentFragment();
       pages.forEach((page) => {
@@ -233,14 +327,15 @@
     }
 
     function showPage(index) {
-      if (!pages.length) return;
-      currentPage = Math.max(0, Math.min(index, pages.length - 1));
+      buildDisplayPages();
+      if (!displayPages.length) return;
+      currentPage = Math.max(0, Math.min(index, displayPages.length - 1));
       localStorage.setItem('currentPage', currentPage);
-      const page = pages[currentPage];
+      const page = displayPages[currentPage];
       reader.replaceChildren(...cloneNodes(page.nodes));
-      pageInfo.textContent = `${currentPage + 1} / ${pages.length}`;
+      pageInfo.textContent = `${currentPage + 1} / ${displayPages.length}`;
       document.getElementById('prevPage').disabled = currentPage === 0;
-      document.getElementById('nextPage').disabled = currentPage === pages.length - 1;
+      document.getElementById('nextPage').disabled = currentPage === displayPages.length - 1;
       window.scrollTo({ top: 0, behavior: 'smooth' });
       updateProgress();
     }
@@ -268,8 +363,8 @@
 
     function updateProgress() {
       let ratio = 0;
-      if (readingMode === 'page' && pages.length > 1) {
-        ratio = currentPage / (pages.length - 1);
+      if (readingMode === 'page' && displayPages.length > 1) {
+        ratio = currentPage / (displayPages.length - 1);
       } else {
         const scrollTop = window.scrollY || document.documentElement.scrollTop;
         const height = document.documentElement.scrollHeight - window.innerHeight;
@@ -283,6 +378,7 @@
       const next = Math.min(1.35, current + 0.05);
       localStorage.setItem('fontScale', next);
       root.style.setProperty('--font-scale', next);
+      if (readingMode === 'page') showPage(currentPage);
     });
 
     document.getElementById('decreaseFont').addEventListener('click', () => {
@@ -290,6 +386,7 @@
       const next = Math.max(0.85, current - 0.05);
       localStorage.setItem('fontScale', next);
       root.style.setProperty('--font-scale', next);
+      if (readingMode === 'page') showPage(currentPage);
     });
 
     document.getElementById('toggleTheme').addEventListener('click', () => {
@@ -308,6 +405,27 @@
 
     document.getElementById('prevPage').addEventListener('click', () => showPage(currentPage - 1));
     document.getElementById('nextPage').addEventListener('click', () => showPage(currentPage + 1));
+
+    reader.addEventListener('touchstart', (event) => {
+      if (readingMode !== 'page') return;
+      const touch = event.changedTouches[0];
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+    }, { passive: true });
+
+    reader.addEventListener('touchend', (event) => {
+      if (readingMode !== 'page') return;
+      const touch = event.changedTouches[0];
+      const dx = touch.clientX - touchStartX;
+      const dy = touch.clientY - touchStartY;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+        showPage(currentPage + (dx < 0 ? 1 : -1));
+      }
+    }, { passive: true });
+
+    window.addEventListener('resize', () => {
+      if (readingMode === 'page') showPage(currentPage);
+    });
 
     document.addEventListener('keydown', (event) => {
       if (readingMode !== 'page') return;
