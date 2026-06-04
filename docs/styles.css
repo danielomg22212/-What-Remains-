@@ -45,24 +45,23 @@ body[data-font="kai"] {
   font-family: "KaiTi", "STKaiti", "Kaiti SC", "Noto Serif SC", serif;
 }
 
-body.cover-active {
-  overflow: hidden;
-}
-
 body.cover-active .topbar,
-body.cover-active .progress,
-body.cover-active .layout {
+body.cover-active .progress {
   display: none;
 }
 
 .cover-screen {
   min-height: 100vh;
-  display: grid;
+  display: none;
   place-items: center;
   padding: 28px;
   background:
     radial-gradient(circle at 50% 18%, rgba(143, 61, 47, 0.2), transparent 34%),
     linear-gradient(135deg, #11100f, #27221d 54%, #0f0f0e);
+}
+
+body.cover-active .cover-screen {
+  display: grid;
 }
 
 .cover-shell {
@@ -84,35 +83,6 @@ body.cover-active .layout {
   object-fit: cover;
 }
 
-.cover-title-block {
-  position: absolute;
-  inset: 0;
-  padding: 13% 13%;
-  color: #f1eadf;
-  pointer-events: none;
-}
-
-.cover-title-text {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  font-size: clamp(46px, 10vw, 72px);
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: 0.04em;
-  text-shadow: 0 4px 22px rgba(0, 0, 0, 0.55);
-}
-
-.cover-author-text {
-  position: absolute;
-  top: 13%;
-  left: 28%;
-  writing-mode: vertical-rl;
-  color: rgba(241, 234, 223, 0.72);
-  font-size: clamp(18px, 4vw, 28px);
-  letter-spacing: 0.08em;
-  text-shadow: 0 3px 14px rgba(0, 0, 0, 0.55);
-}
-
 .cover-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -120,17 +90,20 @@ body.cover-active .layout {
   margin-top: 18px;
 }
 
-.cover-actions button {
+.cover-actions a {
+  display: block;
   border: 1px solid rgba(238, 230, 216, 0.2);
   border-radius: 8px;
   padding: 12px 16px;
   background: rgba(241, 232, 220, 0.12);
   color: #f0e9dc;
   font: inherit;
+  text-align: center;
+  text-decoration: none;
   cursor: pointer;
 }
 
-.cover-actions button:first-child {
+.cover-actions a:first-child {
   background: #8f3d2f;
   border-color: #a84a3a;
   color: #fff7ee;

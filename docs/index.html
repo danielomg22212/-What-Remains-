@@ -6,21 +6,17 @@
   <title>后来如何</title>
   <meta name="description" content="《后来如何》在线阅读">
   <meta name="robots" content="index,follow,noarchive">
-  <link rel="stylesheet" href="styles.css?v=20260604-cover-fix">
+  <link rel="stylesheet" href="styles.css?v=20260604-cover-entry-fix">
 </head>
 <body class="cover-active">
   <section id="coverScreen" class="cover-screen" aria-label="作品封面">
     <div class="cover-shell">
       <div class="cover-card">
         <img src="cover.svg" alt="" class="cover-image" aria-hidden="true">
-        <div class="cover-title-block">
-          <div class="cover-title-text">后来如何</div>
-          <div class="cover-author-text">潇思雨</div>
-        </div>
       </div>
       <div class="cover-actions">
-        <button id="startReading" type="button" onclick="document.body.className=document.body.className.replace('cover-active','').trim(); if(document.body.className.indexOf('chrome-hidden')<0){document.body.className=(document.body.className+' chrome-hidden').trim();}">开始阅读</button>
-        <button id="openTocFromCover" type="button" onclick="document.body.className=document.body.className.replace('cover-active','').replace('chrome-hidden','').trim(); var l=document.getElementById('layout'); if(l){l.className=l.className.replace('toc-hidden','').trim();}">目录</button>
+        <a id="startReading" href="#reader">开始阅读</a>
+        <a id="openTocFromCover" href="#tocList">目录</a>
       </div>
     </div>
   </section>
@@ -85,15 +81,15 @@
     const fontLabels = { serif: '宋体', hei: '黑体', kai: '楷体' };
 
     function hasClass(element, name) {
-      return (` ${element.className} `).indexOf(` ${name} `) >= 0;
+      return (` ${element.getAttribute('class') || ''} `).indexOf(` ${name} `) >= 0;
     }
 
     function addClass(element, name) {
-      if (!hasClass(element, name)) element.className = `${element.className} ${name}`.trim();
+      if (!hasClass(element, name)) element.setAttribute('class', `${element.getAttribute('class') || ''} ${name}`.trim());
     }
 
     function removeClass(element, name) {
-      element.className = (` ${element.className} `).replace(` ${name} `, ' ').trim();
+      element.setAttribute('class', (` ${element.getAttribute('class') || ''} `).replace(` ${name} `, ' ').trim());
     }
 
     function setClass(element, name, enabled) {
