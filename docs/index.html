@@ -516,28 +516,77 @@
       return nodes;
     }
 
+    const PAGED_PARAGRAPH_CHARS = 96;
+    const PAGED_PARAGRAPH_MIN_CHARS = 28;
+    const PAGED_DYNAMIC_MIN_CHARS = 16;
+    const STRONG_BREAKS = '。！？!?；;';
+    const SOFT_BREAKS = '，、：:';
+
+    function makePagedParagraph(text, sourceIndex, options = {}) {
+      const p = document.createElement('p');
+      p.textContent = text;
+      setClass(p, 'paragraph-continuation', Boolean(options.continuation));
+      setClass(p, 'paragraph-continued', Boolean(options.continuedAfter));
+      return {
+        node: p,
+        sourceIndex,
+        splittable: true,
+        text,
+        continuation: Boolean(options.continuation),
+        continuedAfter: Boolean(options.continuedAfter)
+      };
+    }
+
+    function findBreakBefore(text, limit, minimum = 0) {
+      const max = Math.min(limit, text.length - 1);
+      for (let i = max; i >= minimum; i -= 1) {
+        if (STRONG_BREAKS.includes(text[i])) return i + 1;
+      }
+      for (let i = max; i >= minimum; i -= 1) {
+        if (SOFT_BREAKS.includes(text[i])) return i + 1;
+      }
+      return 0;
+    }
+
+    function splitParagraphText(text, maxChars = PAGED_PARAGRAPH_CHARS) {
+      const parts = [];
+      let rest = text.trim();
+      while (rest.length > maxChars) {
+        let cut = findBreakBefore(rest, maxChars, PAGED_PARAGRAPH_MIN_CHARS);
+        if (!cut) cut = maxChars;
+        parts.push(rest.slice(0, cut).trim());
+        rest = rest.slice(cut).trim();
+      }
+      if (rest) parts.push(rest);
+      return parts;
+    }
+
     function splitForPagination(item) {
       const node = item.node;
       const text = (node.textContent || '').trim();
-      if (node.tagName !== 'P' || text.length <= 180) return [item];
+      if (node.tagName !== 'P' || !text) return [{ ...item, splittable: false }];
 
-      const parts = [];
-      let rest = text;
-      while (rest.length > 180) {
-        let cut = rest.lastIndexOf('。', 180);
-        if (cut < 80) cut = rest.lastIndexOf('，', 180);
-        if (cut < 80) cut = rest.lastIndexOf('；', 180);
-        if (cut < 80) cut = 180;
-        parts.push(rest.slice(0, cut + 1).trim());
-        rest = rest.slice(cut + 1).trim();
-      }
-      if (rest) parts.push(rest);
+      const parts = splitParagraphText(text);
+      return parts.map((part, index) => makePagedParagraph(part, item.sourceIndex, {
+        continuation: index > 0,
+        continuedAfter: index < parts.length - 1
+      }));
+    }
 
-      return parts.map((part) => {
-        const p = document.createElement('p');
-        p.textContent = part;
-        return { node: p, sourceIndex: item.sourceIndex };
-      });
+    function splitPagedParagraphItem(item, prefixLength) {
+      const headText = item.text.slice(0, prefixLength).trim();
+      const tailText = item.text.slice(prefixLength).trim();
+      if (!headText || !tailText) return null;
+      return {
+        head: makePagedParagraph(headText, item.sourceIndex, {
+          continuation: item.continuation,
+          continuedAfter: true
+        }),
+        tail: makePagedParagraph(tailText, item.sourceIndex, {
+          continuation: true,
+          continuedAfter: item.continuedAfter
+        })
+      };
     }
 
     function renderContinuous() {
@@ -566,27 +615,69 @@
         return reader.scrollHeight <= reader.clientHeight + 2;
       };
 
-      units.forEach((item) => {
-        const candidate = current.concat(item);
-        if (current.length && !fits(candidate)) {
-          displayPages.push({
-            nodes: current.map((entry) => entry.node),
-            sources: Array.from(new Set(currentSources))
-          });
-          current = [item];
-          currentSources = [item.sourceIndex];
-        } else {
-          current = candidate;
-          currentSources.push(item.sourceIndex);
-        }
-      });
-
-      if (current.length) {
+      const pushCurrentPage = () => {
+        if (!current.length) return;
         displayPages.push({
           nodes: current.map((entry) => entry.node),
           sources: Array.from(new Set(currentSources))
         });
+        current = [];
+        currentSources = [];
+      };
+
+      const findFittingSplit = (item) => {
+        if (!item.splittable || item.text.length < PAGED_DYNAMIC_MIN_CHARS * 2) return null;
+        let low = PAGED_DYNAMIC_MIN_CHARS;
+        let high = item.text.length - PAGED_DYNAMIC_MIN_CHARS;
+        let best = 0;
+
+        while (low <= high) {
+          const mid = Math.floor((low + high) / 2);
+          const split = splitPagedParagraphItem(item, mid);
+          if (split && fits(current.concat(split.head))) {
+            best = mid;
+            low = mid + 1;
+          } else {
+            high = mid - 1;
+          }
+        }
+
+        if (!best) return null;
+        const naturalBreak = findBreakBefore(item.text, best, PAGED_DYNAMIC_MIN_CHARS);
+        const split = splitPagedParagraphItem(item, naturalBreak || best);
+        return split && fits(current.concat(split.head)) ? split : null;
+      };
+
+      const queue = units.slice();
+      while (queue.length) {
+        const item = queue.shift();
+        const candidate = current.concat(item);
+        if (fits(candidate)) {
+          current = candidate;
+          currentSources.push(item.sourceIndex);
+          continue;
+        }
+
+        const split = findFittingSplit(item);
+        if (split) {
+          current.push(split.head);
+          currentSources.push(split.head.sourceIndex);
+          pushCurrentPage();
+          queue.unshift(split.tail);
+          continue;
+        }
+
+        if (current.length) {
+          pushCurrentPage();
+          queue.unshift(item);
+        } else {
+          current = [item];
+          currentSources = [item.sourceIndex];
+          pushCurrentPage();
+        }
       }
+
+      pushCurrentPage();
 
       pageCount = Math.max(1, displayPages.length);
     }

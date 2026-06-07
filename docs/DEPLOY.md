@@ -58,31 +58,30 @@ git push github main
 
 ---
 
-## 四、版权与仓库可见性（重要）
+## 四、私有仓库（请完成）
 
-### 当前方式的局限
+**请按专门指南操作：** [PRIVATE_REPO_MIGRATION.md](PRIVATE_REPO_MIGRATION.md)
 
-- 阅读器通过 `fetch('novel.txt')` 加载正文，任何人只要知道地址即可直接下载，例如：  
-  `https://你的用户名.github.io/仓库名/novel.txt`
-- 若仓库为 **Public**，完整正文通常也在 Git 历史里，可被 `git clone` 获取。
-- 页面内的「禁止复制」仅对普通浏览器操作有效，**不能**替代法律保护，也无法从技术层面彻底禁止下载。
+摘要：
 
-### 建议做法（按优先级）
+1. 打开仓库 **Settings → Danger Zone → Make private**（推荐方案 A，保留现有 Pages 地址）。  
+2. **Settings → Pages** 保持 `main` + `/docs`。  
+3. 本地 `git push github main` 不变；根目录修订稿已由 `.gitignore` 排除，勿误提交。
 
-| 做法 | 说明 |
-|------|------|
-| **仓库设为 Private** | 源码与 `novel.txt` 不对公众开放；Pages 仍可对外提供阅读站（GitHub 免费账户支持 private 仓库的 Pages）。 |
-| **公开仓库只放阅读站** | 若必须 public：勿把未删节的完整定稿长期放在公开分支；仅同步对外发布的 `docs/novel.txt`。 |
-| **保留《创作声明》** | 已写在 `novel.txt` 文末，阅读器目录中可进入该节。 |
-| **登记与留痕** | 需要更强举证时，可向中国版权保护中心登记；保留首次发表时间与邮件/Git 提交记录。 |
+### 私有仓库能保护什么
 
-更严格的防爬、分章下发、隐形水印等需后续单独改造（例如 Workers、分片、私有部署），本说明暂不展开。
+| 能保护 | 仍公开 |
+|--------|--------|
+| GitHub 上浏览 / clone 源码与历史 | Pages 上的阅读页与 `novel.txt` URL |
+| 他人直接看到你的提交与分支 | 已被人保存的旧 clone（若曾长期 Public） |
+
+页面「禁止复制」与 `robots.txt` 的 `Disallow: /novel.txt` 仅作减损，不能替代私有仓库或法律保护。更严格的防爬、分章下发、隐形水印等可后续再做。
 
 ---
 
-## 五、可选：`robots.txt`
+## 五、`robots.txt`
 
-当前 `docs/robots.txt` 允许全部抓取。若希望减少搜索引擎直接索引正文文件，可改为：
+已配置为允许站点、禁止索引正文文件：
 
 ```
 User-agent: *
@@ -90,9 +89,7 @@ Allow: /
 Disallow: /novel.txt
 ```
 
-注意：这**不能**阻止人工或脚本直接访问 URL，仅对部分爬虫有效。
-
-修改后同样 `git add docs/robots.txt` 并推送。
+推送 `docs/robots.txt` 后生效；**不能**阻止人工直接访问 URL。
 
 ---
 
@@ -103,7 +100,7 @@ Disallow: /novel.txt
 - [ ] GitHub Pages 显示最近部署成功
 - [ ] 手机与电脑各测：封面、连续/翻页、目录关闭、字号与配色
 - [ ] 文末「创作声明」显示完整
-- [ ] 已根据需要做仓库 Public / Private 决策
+- [ ] 已完成 [PRIVATE_REPO_MIGRATION.md](PRIVATE_REPO_MIGRATION.md) 中的私有仓库迁移
 
 ---
 

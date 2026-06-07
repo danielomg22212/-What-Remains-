@@ -5,6 +5,7 @@
 GitHub Pages 静态阅读站，源码在 `docs/` 目录。
 
 - **部署与更新说明：** [docs/DEPLOY.md](docs/DEPLOY.md)
+- **私有仓库迁移（必做）：** [docs/PRIVATE_REPO_MIGRATION.md](docs/PRIVATE_REPO_MIGRATION.md)
 - **在线阅读（部署后）：** https://danielomg22212.github.io/-What-Remains-/
 
 ## 快速更新

@@ -468,6 +468,14 @@ body[data-mode="page"] .pager {
   word-break: break-word;
 }
 
+.reader p.paragraph-continuation {
+  text-indent: 0;
+}
+
+.reader p.paragraph-continued {
+  margin-bottom: 0;
+}
+
 .reader strong {
   font-weight: 700;
 }
