@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1350" role="img" aria-label="《从你的全世界路过》封面">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dbe3e7"/>
+      <stop offset="1" stop-color="#fffaf0"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="1350" fill="url(#bg)"/>
+  <rect x="64" y="64" width="772" height="1222" fill="none" stroke="#37566b" stroke-width="3" opacity="0.42"/>
+  <rect x="112" y="112" width="676" height="1126" fill="#ffffff" stroke="#37566b" stroke-width="1" opacity="0.34"/>
+  <text x="450" y="520" fill="#202326" text-anchor="middle" font-size="58" font-weight="700" font-family="Noto Serif SC, Songti SC, SimSun, serif">从你的全世界路过</text>
+  <text x="450" y="610" fill="#37566b" text-anchor="middle" font-size="28" font-family="Noto Serif SC, Songti SC, SimSun, serif">雨夜与远行</text>
+  <line x1="270" y1="690" x2="630" y2="690" stroke="#37566b" stroke-width="3" opacity="0.65"/>
+  <text x="450" y="1010" fill="#4e555b" text-anchor="middle" font-size="28" font-family="Noto Serif SC, Songti SC, SimSun, serif">潇思雨</text>
+</svg>

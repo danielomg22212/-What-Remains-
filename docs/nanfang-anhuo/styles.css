@@ -369,9 +369,6 @@ body[data-mode="scroll"].chrome-hidden .reader {
 
 .reader.paged-reader {
   touch-action: pan-y;
-  column-width: var(--page-width);
-  column-gap: var(--page-gap);
-  column-fill: auto;
 }
 
 .reading-column {
@@ -461,13 +458,6 @@ body[data-mode="page"] .pager {
   margin: 46px 0 20px;
   font-size: calc(22px * var(--font-scale));
   line-height: 1.45;
-}
-
-/* 翻页模式：章节标题换栏/换页 */
-body[data-mode="page"] .reader h2,
-body[data-mode="page"] .reader h3 {
-  break-before: column;
-  break-after: avoid;
 }
 
 .reader p {
