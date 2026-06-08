@@ -163,6 +163,28 @@ export function createReaderApp(options = {}) {
       return target;
     }
 
+    function findPagedMarkerElement() {
+      if (!reader.children.length) return null;
+      // 当前页的第一个 h2/h3 就是阅读位置的锚点
+      const h = reader.querySelector('h2, h3');
+      return h || reader.querySelector('p');
+    }
+
+    function findDisplayPageByElement(el) {
+      if (!el || !_displayPageGroups.length) return 0;
+      // 在预计算的页面分组中查找该元素
+      const text = (el.textContent || '').trim().slice(0, 40);
+      const id = el.id;
+      for (let i = 0; i < _displayPageGroups.length; i++) {
+        for (const node of _displayPageGroups[i]) {
+          if ((id && node.id === id) || (!id && node.textContent.trim().slice(0, 40) === text)) {
+            return i;
+          }
+        }
+      }
+      return 0;
+    }
+
     function captureReadingPosition() {
       if (readingMode === 'scroll' && !hasClass(document.body, 'cover-active')) {
         const y = window.scrollY || document.documentElement.scrollTop;
@@ -227,7 +249,7 @@ export function createReaderApp(options = {}) {
       if (!novelReady || hasClass(document.body, 'cover-active')) return;
       const snippet = getStore('readingMarkerSnippet') || '';
       if (readingMode === 'page') {
-        rebuildDisplayPages();
+        buildDisplayPages();
         showPage(findDisplayPageBySnippet(snippet));
         return;
       }
@@ -339,6 +361,7 @@ export function createReaderApp(options = {}) {
       const lines = text.replace(/\r\n/g, '\n').split('\n');
       const toc = document.createDocumentFragment();
       let chapterIndex = 0;
+      let firstSectionHeading = true;
       pages = [];
 
       lines.forEach((line) => {
@@ -372,6 +395,7 @@ export function createReaderApp(options = {}) {
           const el = document.createElement(tag);
           el.textContent = titleText;
           el.id = slugify(titleText, chapterIndex++);
+          if (firstSectionHeading) { el.classList.add('first-section'); firstSectionHeading = false; }
           startPage(titleText, el.id);
           pushNode(el);
 
@@ -387,6 +411,7 @@ export function createReaderApp(options = {}) {
           const h2 = document.createElement('h2');
           h2.textContent = trimmed;
           h2.id = slugify(trimmed, chapterIndex++);
+          if (firstSectionHeading) { h2.classList.add('first-section'); firstSectionHeading = false; }
           startPage(trimmed, h2.id);
           pushNode(h2);
           addTocLink(toc, h2, trimmed, 'section-link');
@@ -397,6 +422,7 @@ export function createReaderApp(options = {}) {
           const h3 = document.createElement('h3');
           h3.textContent = trimmed;
           h3.id = slugify(trimmed, chapterIndex++);
+          if (firstSectionHeading) { h3.classList.add('first-section'); firstSectionHeading = false; }
           startPage(trimmed, h3.id);
           pushNode(h3);
           addTocLink(toc, h3, trimmed, 'chapter-link');
@@ -454,9 +480,21 @@ export function createReaderApp(options = {}) {
     }
 
     function findDisplayPageBySource(sourceIndex) {
-      if (!displayPages.length) return 0;
-      const index = displayPages.findIndex((page) => page.sources.indexOf(sourceIndex) >= 0);
-      return index >= 0 ? index : 0;
+      if (sourceIndex < 0 || sourceIndex >= pages.length) return 0;
+      const page = pages[sourceIndex];
+      if (!page || !page.nodes) return 0;
+      // 找到 source page 的第一个节点，在预计算分组中查找
+      const firstNode = page.nodes[0];
+      const id = firstNode.id || '';
+      const text = (firstNode.textContent || '').trim().slice(0, 40);
+      for (let i = 0; i < _displayPageGroups.length; i++) {
+        for (const node of _displayPageGroups[i]) {
+          if ((id && node.id === id) || (!id && text && node.textContent.trim().slice(0, 40) === text)) {
+            return i;
+          }
+        }
+      }
+      return 0;
     }
 
     function allContentNodes() {
@@ -492,37 +530,68 @@ export function createReaderApp(options = {}) {
       reader.replaceChildren(fragment);
     }
 
-    function pageStep() {
-      return reader.clientWidth + Number(getComputedStyle(reader).columnGap.replace('px', '') || 0);
-    }
+    // JS 手动分页：测量元素高度，切割为固定高度页面，彻底告别 CSS columns 对齐问题
+    let _displayPageWrappers = [];
 
-    function syncPagedColumns() {
-      const w = reader.clientWidth;
-      const gap = Math.max(24, Math.round(w * 0.08));
-      // 先设置 CSS 变量，再强制重排后读取 scrollWidth
-      reader.style.setProperty('--page-width', `${w}px`);
-      reader.style.setProperty('--page-gap', `${gap}px`);
-      // 触发强制重排，确保浏览器完成多栏布局后再读取 scrollWidth
-      void reader.offsetHeight;
-      pageCount = Math.max(1, Math.ceil(reader.scrollWidth / Math.max(1, w + gap)));
-    }
+    // 预计算的页面分组（每组是源元素数组），只在 rebuild 时刷新
+    let _displayPageGroups = [];
 
-    function rebuildDisplayPages() {
-      // 先设置栏宽 CSS 变量，再渲染内容，确保内容直接按正确栏宽布局
-      const w = reader.clientWidth;
-      const gap = Math.max(24, Math.round(w * 0.08));
-      reader.style.setProperty('--page-width', `${w}px`);
-      reader.style.setProperty('--page-gap', `${gap}px`);
+    function buildDisplayPages() {
       addClass(reader, 'paged-reader');
-      displayPages = [];
+      // 1. 渲染全部内容，测量各元素垂直位置
       renderPagedContent();
-      // 强制重排后读取最终 scrollWidth
       void reader.offsetHeight;
-      pageCount = Math.max(1, Math.ceil(reader.scrollWidth / Math.max(1, w + gap)));
+      const cs = getComputedStyle(reader);
+      const padTop = parseFloat(cs.paddingTop) || 0;
+      const padBottom = parseFloat(cs.paddingBottom) || 0;
+      const borderTop = parseFloat(cs.borderTopWidth) || 0;
+      // 关键：可视内容区 = clientHeight 减去上下 padding
+      const viewHeight = reader.clientHeight - padTop - padBottom;
+      const contentTop = reader.getBoundingClientRect().top + borderTop + padTop;
+      const children = Array.from(reader.children);
+      const groups = [];
+      let group = [];
+      let origin = contentTop;
+      // 页底留白阈值：至少留出约一行字的空间，避免末行被截断
+      const bottomPad = Math.max(18, Math.round(viewHeight * 0.025));
+      for (const el of children) {
+        const rect = el.getBoundingClientRect();
+        if (group.length > 0 && rect.bottom - origin > viewHeight - bottomPad) {
+          // 当前页最后一元素如果也太贴底，一并移到下一页
+          const lastEl = group[group.length - 1];
+          const lastRect = lastEl.getBoundingClientRect();
+          if (lastRect.bottom - origin > viewHeight - bottomPad) {
+            const moved = group.pop();
+            groups.push(group);
+            group = [moved];
+            origin = moved.getBoundingClientRect().top;
+          } else {
+            groups.push(group);
+            group = [];
+            origin = rect.top;
+          }
+        }
+        if (group.length === 0) origin = rect.top;
+        group.push(el);
+      }
+      if (group.length > 0) groups.push(group);
+      _displayPageGroups = groups;
+      pageCount = groups.length;
+      displayPages = [];
+      // 2. 只渲染当前页内容
+      renderPageDOM(currentPage);
+    }
+
+    // 把第 pageIndex 页的元素渲染到 reader 中
+    function renderPageDOM(pageIndex) {
+      const els = _displayPageGroups[pageIndex] || [];
+      const fragment = document.createDocumentFragment();
+      els.forEach(el => fragment.appendChild(el.cloneNode(true)));
+      reader.replaceChildren(fragment);
     }
 
     function renderPagedDocument(pageIndex) {
-      rebuildDisplayPages();
+      buildDisplayPages();
       let target = pageIndex;
       if (target === undefined) target = currentPage;
       target = Math.max(0, Math.min(target, pageCount - 1));
@@ -539,13 +608,14 @@ export function createReaderApp(options = {}) {
 
     function showPage(index) {
       if (readingMode !== 'page') return;
-      if (!reader.children.length) {
-        renderPagedDocument();
+      if (!_displayPageGroups.length) {
+        renderPagedDocument(index);
         return;
       }
       currentPage = Math.max(0, Math.min(index, pageCount - 1));
-      setStore('currentPage', currentPage);
-      reader.scrollTo({ left: currentPage * pageStep(), top: 0, behavior: 'auto' });
+      setStore('currentPage', String(currentPage));
+      // 直接替换 DOM，只显示当前页内容——彻底解决滚动对齐、跨页显示的根源
+      renderPageDOM(currentPage);
       const marker = findPagedMarkerElement();
       if (marker) {
         persistReadingAnchor(findSourceIndexByElementId(marker.id));
@@ -567,7 +637,7 @@ export function createReaderApp(options = {}) {
         pager.hidden = false;
         toggleModeButton.textContent = '连续';
         document.body.dataset.mode = 'page';
-        rebuildDisplayPages();
+        buildDisplayPages();
         const snippet = getStore('readingMarkerSnippet') || '';
         showPage(findDisplayPageBySnippet(snippet));
         setChromeVisible(false);

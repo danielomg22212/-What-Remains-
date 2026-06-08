@@ -188,6 +188,17 @@ body.cover-active .cover-screen {
   font-size: 13px;
 }
 
+.back-link {
+  display: inline-block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.back-link:hover {
+  color: var(--accent);
+}
+
 .tools {
   display: flex;
   align-items: center;
@@ -337,15 +348,9 @@ body[data-mode="page"] .reader {
   width: min(920px, calc(100vw - 32px));
   height: calc(100vh - 24px);
   margin: 12px auto;
-  overflow-y: hidden;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: hidden;
   padding: clamp(28px, 5vw, 58px);
   border-radius: 8px;
-}
-
-body[data-mode="page"] .reader::-webkit-scrollbar {
-  display: none;
 }
 
 body[data-mode="page"].chrome-hidden .reader {
@@ -375,9 +380,6 @@ body[data-mode="scroll"].chrome-hidden .reader {
 
 .reader.paged-reader {
   touch-action: pan-y;
-  column-width: var(--page-width);
-  column-gap: var(--page-gap);
-  column-fill: auto;
 }
 
 .reading-column {
@@ -469,12 +471,6 @@ body[data-mode="page"] .pager {
   line-height: 1.45;
 }
 
-/* 翻页模式：章节标题换栏/换页 */
-body[data-mode="page"] .reader h2,
-body[data-mode="page"] .reader h3 {
-  break-before: column;
-  break-after: avoid;
-}
 
 .reader p {
   margin: 0 0 1.05em;
