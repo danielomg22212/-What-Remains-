@@ -497,17 +497,28 @@ export function createReaderApp(options = {}) {
     }
 
     function syncPagedColumns() {
-      const gap = Math.max(24, Math.round(reader.clientWidth * 0.08));
-      reader.style.setProperty('--page-width', `${reader.clientWidth}px`);
+      const w = reader.clientWidth;
+      const gap = Math.max(24, Math.round(w * 0.08));
+      // 先设置 CSS 变量，再强制重排后读取 scrollWidth
+      reader.style.setProperty('--page-width', `${w}px`);
       reader.style.setProperty('--page-gap', `${gap}px`);
-      pageCount = Math.max(1, Math.ceil(reader.scrollWidth / Math.max(1, reader.clientWidth + gap)));
+      // 触发强制重排，确保浏览器完成多栏布局后再读取 scrollWidth
+      void reader.offsetHeight;
+      pageCount = Math.max(1, Math.ceil(reader.scrollWidth / Math.max(1, w + gap)));
     }
 
     function rebuildDisplayPages() {
+      // 先设置栏宽 CSS 变量，再渲染内容，确保内容直接按正确栏宽布局
+      const w = reader.clientWidth;
+      const gap = Math.max(24, Math.round(w * 0.08));
+      reader.style.setProperty('--page-width', `${w}px`);
+      reader.style.setProperty('--page-gap', `${gap}px`);
       addClass(reader, 'paged-reader');
       displayPages = [];
       renderPagedContent();
-      syncPagedColumns();
+      // 强制重排后读取最终 scrollWidth
+      void reader.offsetHeight;
+      pageCount = Math.max(1, Math.ceil(reader.scrollWidth / Math.max(1, w + gap)));
     }
 
     function renderPagedDocument(pageIndex) {

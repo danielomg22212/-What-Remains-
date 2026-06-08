@@ -337,9 +337,15 @@ body[data-mode="page"] .reader {
   width: min(920px, calc(100vw - 32px));
   height: calc(100vh - 24px);
   margin: 12px auto;
-  overflow: hidden;
+  overflow-y: hidden;
+  overflow-x: auto;
+  scrollbar-width: none;
   padding: clamp(28px, 5vw, 58px);
   border-radius: 8px;
+}
+
+body[data-mode="page"] .reader::-webkit-scrollbar {
+  display: none;
 }
 
 body[data-mode="page"].chrome-hidden .reader {
