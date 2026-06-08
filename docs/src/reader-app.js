@@ -536,49 +536,163 @@ export function createReaderApp(options = {}) {
     // 预计算的页面分组（每组是源元素数组），只在 rebuild 时刷新
     let _displayPageGroups = [];
 
+    // 在 overflow 元素内找到最后一个能完整显示的字，返回 { splitAfter }（字符索引）
+    function findLineSplit(el, maxRelBottom, origin) {
+      const totalChars = el.textContent.length;
+      if (!totalChars) return 0;
+      // 收集所有文本节点
+      const textNodes = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let tn;
+      while ((tn = walker.nextNode())) textNodes.push(tn);
+      // 二分查找最后一个不溢出的字符
+      let lo = 0, hi = totalChars;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        const range = document.createRange();
+        // 定位到第 mid 个字符
+        let rem = mid;
+        let endNode = textNodes[0], endOff = 0;
+        for (const n of textNodes) {
+          if (rem <= n.length) { endNode = n; endOff = rem; break; }
+          rem -= n.length;
+        }
+        range.setStart(textNodes[0], 0);
+        range.setEnd(endNode, endOff);
+        const rect = range.getBoundingClientRect();
+        if (rect.bottom - origin <= maxRelBottom) {
+          lo = mid;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      if (lo === 0) return 0; // 第一个字就溢出，无法拆分
+      // 找到 lo 所在行的行首：往前找到第一个 top 不同的字
+      let lineStart = lo;
+      const loRange = document.createRange();
+      let rem = lo;
+      let loNode = textNodes[0], loOff = 0;
+      for (const n of textNodes) {
+        if (rem <= n.length) { loNode = n; loOff = rem; break; }
+        rem -= n.length;
+      }
+      loRange.setStart(loNode, Math.max(0, loOff - 1));
+      loRange.setEnd(loNode, loOff);
+      const loTop = loRange.getBoundingClientRect().top;
+      while (lineStart > 0) {
+        rem = lineStart - 1;
+        let prevNode = textNodes[0], prevOff = 0;
+        for (const n of textNodes) {
+          if (rem <= n.length) { prevNode = n; prevOff = rem; break; }
+          rem -= n.length;
+        }
+        const prevRange = document.createRange();
+        prevRange.setStart(prevNode, Math.max(0, prevOff - 1));
+        prevRange.setEnd(prevNode, prevOff);
+        if (Math.abs(prevRange.getBoundingClientRect().top - loTop) > 1) break;
+        lineStart--;
+      }
+      return lineStart;
+    }
+
+    // 把 el 在字符索引 splitAfter 处切开：返回 [前半, 后半]
+    function splitElement(el, splitAfter) {
+      if (splitAfter <= 0) return [null, el.cloneNode(true)];
+      const totalChars = el.textContent.length;
+      if (splitAfter >= totalChars) return [el.cloneNode(true), null];
+      const textNodes = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let tn;
+      while ((tn = walker.nextNode())) textNodes.push(tn);
+      // 找到 splitAfter 所在的文本节点
+      let rem = splitAfter;
+      let splitNode = null, splitOff = 0;
+      for (const n of textNodes) {
+        if (rem <= n.length) { splitNode = n; splitOff = rem; break; }
+        rem -= n.length;
+      }
+      if (!splitNode) return [el.cloneNode(true), null];
+      // 克隆并切割
+      const before = el.cloneNode(true);
+      const after = el.cloneNode(true);
+      // 前半：保留 splitAfter 之前的文本
+      const beforeWalk = document.createTreeWalker(before, NodeFilter.SHOW_TEXT);
+      const beforeNodes = [];
+      let bn;
+      while ((bn = beforeWalk.nextNode())) beforeNodes.push(bn);
+      rem = splitAfter;
+      for (const n of beforeNodes) {
+        if (rem <= 0) { n.textContent = ''; }
+        else if (rem < n.length) { n.textContent = n.textContent.slice(0, rem); rem = 0; }
+        else { rem -= n.length; }
+      }
+      // 后半：保留 splitAfter 之后的文本
+      const afterWalk = document.createTreeWalker(after, NodeFilter.SHOW_TEXT);
+      const afterNodes = [];
+      let an;
+      while ((an = afterWalk.nextNode())) afterNodes.push(an);
+      rem = splitAfter;
+      for (const n of afterNodes) {
+        if (rem >= n.length) { n.textContent = ''; rem -= n.length; }
+        else { n.textContent = n.textContent.slice(rem); rem = 0; }
+      }
+      return [before, after];
+    }
+
     function buildDisplayPages() {
       addClass(reader, 'paged-reader');
-      // 1. 渲染全部内容，测量各元素垂直位置
       renderPagedContent();
       void reader.offsetHeight;
       const cs = getComputedStyle(reader);
       const padTop = parseFloat(cs.paddingTop) || 0;
       const padBottom = parseFloat(cs.paddingBottom) || 0;
       const borderTop = parseFloat(cs.borderTopWidth) || 0;
-      // 关键：可视内容区 = clientHeight 减去上下 padding
-      const viewHeight = reader.clientHeight - padTop - padBottom;
+      const borderBottom = parseFloat(cs.borderBottomWidth) || 0;
+      const viewHeight = parseFloat(cs.height) - padTop - padBottom - borderTop - borderBottom;
       const contentTop = reader.getBoundingClientRect().top + borderTop + padTop;
       const children = Array.from(reader.children);
+
+      // 预收集每个元素的位置（viewport 绝对坐标）
+      const items = children.map(el => {
+        const r = el.getBoundingClientRect();
+        return { el, top: r.top, bottom: r.bottom };
+      });
+
       const groups = [];
       let group = [];
-      let origin = contentTop;
-      // 页底留白阈值：至少留出约一行字的空间，避免末行被截断
-      const bottomPad = Math.max(18, Math.round(viewHeight * 0.025));
-      for (const el of children) {
-        const rect = el.getBoundingClientRect();
-        if (group.length > 0 && rect.bottom - origin > viewHeight - bottomPad) {
-          // 当前页最后一元素如果也太贴底，一并移到下一页
-          const lastEl = group[group.length - 1];
-          const lastRect = lastEl.getBoundingClientRect();
-          if (lastRect.bottom - origin > viewHeight - bottomPad) {
-            const moved = group.pop();
-            groups.push(group);
-            group = [moved];
-            origin = moved.getBoundingClientRect().top;
-          } else {
+      let pageOrigin = contentTop; // 当前页在 viewport 中的绝对 top
+
+      for (const item of items) {
+        const relBottom = item.bottom - pageOrigin;
+
+        if (group.length > 0 && relBottom > viewHeight) {
+          // 溢出——尝试按行切分（用 pageOrigin 作为绝对坐标原点）
+          const splitChar = findLineSplit(item.el, viewHeight, pageOrigin);
+          if (splitChar > 0 && splitChar < item.el.textContent.length) {
+            const [firstHalf, secondHalf] = splitElement(item.el, splitChar);
+            if (firstHalf && firstHalf.textContent.trim()) group.push(firstHalf);
             groups.push(group);
             group = [];
-            origin = rect.top;
+            pageOrigin = pageOrigin + viewHeight; // 下一页
+            if (secondHalf && secondHalf.textContent.trim()) {
+              group.push(secondHalf);
+            }
+            continue;
           }
+          // 无法切分，整段移到下一页
+          groups.push(group);
+          group = [item.el];
+          pageOrigin = item.top;
+        } else {
+          if (group.length === 0) pageOrigin = item.top;
+          group.push(item.el);
         }
-        if (group.length === 0) origin = rect.top;
-        group.push(el);
       }
       if (group.length > 0) groups.push(group);
+
       _displayPageGroups = groups;
       pageCount = groups.length;
       displayPages = [];
-      // 2. 只渲染当前页内容
       renderPageDOM(currentPage);
     }
 
